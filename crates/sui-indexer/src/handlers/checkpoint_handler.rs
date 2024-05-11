@@ -123,11 +123,13 @@ where
     T: R2D2Connection + 'static,
 {
     async fn process_checkpoint(&self, checkpoint: CheckpointData) -> anyhow::Result<()> {
+        let mut checkpoints = vec![checkpoint];
+        let index_packages = Self::index_packages(&checkpoints, &self.metrics);
         let checkpoint_data = Self::index_checkpoint(
             self.state.clone().into(),
-            checkpoint.clone(),
+            checkpoints.pop().unwrap(),
             Arc::new(self.metrics.clone()),
-            Self::index_packages(&[checkpoint], &self.metrics),
+            index_packages,
             self.package_resolver.clone(),
         )
         .await?;
