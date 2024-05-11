@@ -6,6 +6,7 @@ use crate::handlers::tx_processor::IndexingPackageBuffer;
 use crate::models::display::StoredDisplay;
 use async_trait::async_trait;
 use itertools::Itertools;
+use move_core_types::account_address::AccountAddress;
 use move_core_types::annotated_value::{MoveStructLayout, MoveTypeLayout};
 use move_core_types::language_storage::{StructTag, TypeTag};
 use mysten_metrics::{get_metrics, spawn_monitored_task};
@@ -123,6 +124,7 @@ where
     T: R2D2Connection + 'static,
 {
     async fn process_checkpoint(&self, checkpoint: CheckpointData) -> anyhow::Result<()> {
+        let checkpoint = Self::filter_transactions(checkpoint);
         let mut checkpoints = vec![checkpoint];
         let index_packages = Self::index_packages(&checkpoints, &self.metrics);
         let checkpoint_data = Self::index_checkpoint(
@@ -336,14 +338,14 @@ where
             .enumerate_transactions(checkpoint_summary)
             .map(|(seq, execution_digest)| (execution_digest.transaction, seq));
 
-        if checkpoint_contents.size() != transactions.len() {
-            return Err(IndexerError::FullNodeReadingError(format!(
-                "CheckpointContents has different size {} compared to Transactions {} for checkpoint {}",
-                checkpoint_contents.size(),
-                transactions.len(),
-                checkpoint_seq
-            )));
-        }
+        // if checkpoint_contents.size() != transactions.len() {
+        //     return Err(IndexerError::FullNodeReadingError(format!(
+        //         "CheckpointContents has different size {} compared to Transactions {} for checkpoint {}",
+        //         checkpoint_contents.size(),
+        //         transactions.len(),
+        //         checkpoint_seq
+        //     )));
+        // }
 
         let mut db_transactions = Vec::new();
         let mut db_events = Vec::new();
@@ -624,6 +626,40 @@ where
             changed_objects,
             deleted_objects: indexed_deleted_objects,
         })
+    }
+
+    fn filter_transactions(mut ckpt_data: CheckpointData) -> CheckpointData {
+        let transactions = ckpt_data.transactions.drain(..);
+        ckpt_data.transactions = transactions.filter(Self::keep_transaction).collect();
+        ckpt_data
+    }
+
+    fn keep_transaction(tx: &CheckpointTransaction) -> bool {
+        use sui_types::object::Data;
+        use sui_types::transaction::TransactionKind;
+        let turbos_address: AccountAddress =
+            "0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1"
+                .parse()
+                .unwrap();
+        if !matches!(
+            tx.transaction.data().transaction_data().kind(),
+            TransactionKind::ProgrammableTransaction(_)
+        ) {
+            return true;
+        }
+        let found =
+            tx.input_objects
+                .iter()
+                .chain(&tx.output_objects)
+                .any(|o| match &o.as_inner().data {
+                    Data::Move(m) => m.type_().address() == turbos_address,
+                    Data::Package(p) => *p.original_package_id() == turbos_address,
+                });
+        tracing::warn!(
+            "Found transaction for TURBOS: {}",
+            tx.effects.transaction_digest()
+        );
+        found
     }
 
     fn index_packages(
