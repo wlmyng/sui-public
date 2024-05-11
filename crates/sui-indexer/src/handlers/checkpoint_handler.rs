@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use sui_package_resolver::{PackageStore, PackageStoreWithLruCache, Resolver};
 use sui_rest_api::{CheckpointData, CheckpointTransaction, Client};
-use sui_types::base_types::ObjectRef;
+use sui_types::base_types::{ExecutionDigests, ObjectRef};
 use sui_types::dynamic_field::DynamicFieldInfo;
 use sui_types::dynamic_field::DynamicFieldName;
 use sui_types::dynamic_field::DynamicFieldType;
@@ -22,6 +22,7 @@ use sui_types::messages_checkpoint::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
 };
 use sui_types::object::Object;
+use sui_types::signature::GenericSignature;
 use tokio_util::sync::CancellationToken;
 
 use tokio::sync::watch;
@@ -179,6 +180,7 @@ where
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn index_epoch(
         state: Arc<S>,
         data: &CheckpointData,
@@ -256,6 +258,7 @@ where
         }))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn index_checkpoint(
         state: Arc<S>,
         data: CheckpointData,
@@ -321,6 +324,7 @@ where
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn index_transactions(
         transactions: Vec<CheckpointTransaction>,
         checkpoint_summary: &CertifiedCheckpointSummary,
@@ -338,14 +342,14 @@ where
             .enumerate_transactions(checkpoint_summary)
             .map(|(seq, execution_digest)| (execution_digest.transaction, seq));
 
-        // if checkpoint_contents.size() != transactions.len() {
-        //     return Err(IndexerError::FullNodeReadingError(format!(
-        //         "CheckpointContents has different size {} compared to Transactions {} for checkpoint {}",
-        //         checkpoint_contents.size(),
-        //         transactions.len(),
-        //         checkpoint_seq
-        //     )));
-        // }
+        if checkpoint_contents.size() != transactions.len() {
+            return Err(IndexerError::FullNodeReadingError(format!(
+                "CheckpointContents has different size {} compared to Transactions {} for checkpoint {}",
+                checkpoint_contents.size(),
+                transactions.len(),
+                checkpoint_seq
+            )));
+        }
 
         let mut db_transactions = Vec::new();
         let mut db_events = Vec::new();
@@ -482,6 +486,7 @@ where
         Ok((db_transactions, db_events, db_indices, db_displays))
     }
 
+    #[tracing::instrument(skip_all)]
     async fn index_objects(
         data: CheckpointData,
         metrics: &IndexerMetrics,
@@ -558,6 +563,7 @@ where
     }
 
     // similar to index_objects, but objects_history keeps all versions of objects
+    #[tracing::instrument(skip_all)]
     async fn index_objects_history(
         data: CheckpointData,
         package_resolver: Arc<Resolver<impl PackageStore>>,
@@ -628,13 +634,33 @@ where
         })
     }
 
-    fn filter_transactions(mut ckpt_data: CheckpointData) -> CheckpointData {
-        let transactions = ckpt_data.transactions.drain(..);
-        ckpt_data.transactions = transactions.filter(Self::keep_transaction).collect();
-        ckpt_data
+    fn filter_transactions(
+        CheckpointData {
+            checkpoint_summary,
+            checkpoint_contents,
+            transactions,
+        }: CheckpointData,
+    ) -> CheckpointData {
+        let ((digests, sigs), transactions): ((Vec<_>, _), _) = checkpoint_contents
+            .into_iter_with_signatures()
+            .zip(transactions)
+            .filter(Self::keep_transaction)
+            .unzip();
+        let checkpoint_contents =
+            CheckpointContents::new_with_digests_and_signatures(digests, sigs);
+        CheckpointData {
+            checkpoint_summary,
+            checkpoint_contents,
+            transactions,
+        }
     }
 
-    fn keep_transaction(tx: &CheckpointTransaction) -> bool {
+    fn keep_transaction(
+        (_, tx): &(
+            (ExecutionDigests, Vec<GenericSignature>),
+            CheckpointTransaction,
+        ),
+    ) -> bool {
         use sui_types::object::Data;
         use sui_types::transaction::TransactionKind;
         let turbos_address: AccountAddress =
@@ -645,6 +671,7 @@ where
             tx.transaction.data().transaction_data().kind(),
             TransactionKind::ProgrammableTransaction(_)
         ) {
+            tracing::warn!("Committing non-PTB: {}", tx.effects.transaction_digest());
             return true;
         }
         let found =
@@ -655,10 +682,12 @@ where
                     Data::Move(m) => m.type_().address() == turbos_address,
                     Data::Package(p) => *p.original_package_id() == turbos_address,
                 });
-        tracing::warn!(
-            "Found transaction for TURBOS: {}",
-            tx.effects.transaction_digest()
-        );
+        if found {
+            tracing::warn!(
+                "Found transaction for TURBOS: {}",
+                tx.effects.transaction_digest()
+            );
+        }
         found
     }
 
