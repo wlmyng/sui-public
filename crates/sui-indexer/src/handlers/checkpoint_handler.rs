@@ -634,6 +634,7 @@ where
         })
     }
 
+    #[tracing::instrument(skip_all)]
     fn filter_transactions(
         CheckpointData {
             checkpoint_summary,
@@ -655,6 +656,7 @@ where
         }
     }
 
+    #[tracing::instrument(skip_all)]
     fn keep_transaction(
         (_, tx): &(
             (ExecutionDigests, Vec<GenericSignature>),
@@ -671,24 +673,29 @@ where
             tx.transaction.data().transaction_data().kind(),
             TransactionKind::ProgrammableTransaction(_)
         ) {
-            tracing::warn!("Committing non-PTB: {}", tx.effects.transaction_digest());
+            tracing::info!("Committing non-PTB: {}", tx.effects.transaction_digest());
             return true;
         }
-        let found =
-            tx.input_objects
-                .iter()
-                .chain(&tx.output_objects)
-                .any(|o| match &o.as_inner().data {
-                    Data::Move(m) => m.type_().address() == turbos_address,
-                    Data::Package(p) => *p.original_package_id() == turbos_address,
-                });
-        if found {
-            tracing::warn!(
-                "Found transaction for TURBOS: {}",
-                tx.effects.transaction_digest()
-            );
-        }
-        found
+        tx.output_objects.iter().any(|o| match &o.as_inner().data {
+            Data::Move(m) => {
+                if m.type_().address() == turbos_address {
+                    tracing::info!(
+                        "Found transaction for TURBOS: {}",
+                        tx.effects.transaction_digest()
+                    );
+                    true
+                } else {
+                    false
+                }
+            }
+            Data::Package(_) => {
+                tracing::info!(
+                    "Found pkg publishing transaction: {}",
+                    tx.effects.transaction_digest()
+                );
+                true
+            }
+        })
     }
 
     fn index_packages(
