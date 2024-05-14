@@ -3,6 +3,7 @@
 
 use tokio_util::sync::CancellationToken;
 
+use crate::environment;
 use crate::metrics::IndexerMetrics;
 
 use super::fetcher::CheckpointDownloadData;
@@ -23,14 +24,10 @@ pub async fn run<S>(
     S: futures::Stream<Item = CheckpointDownloadData> + std::marker::Unpin,
 {
     use futures::StreamExt;
-    let batch_size = std::env::var("CHECKPOINT_PROCESSING_BATCH_SIZE")
-        .unwrap_or(CHECKPOINT_PROCESSING_BATCH_SIZE.to_string())
-        .parse::<usize>()
-        .unwrap();
-    let data_limit = std::env::var("CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT")
-        .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT.to_string())
-        .parse::<usize>()
-        .unwrap();
+    let batch_size =
+        environment::CHECKPOINT_PROCESSING_BATCH_SIZE.unwrap_or(CHECKPOINT_PROCESSING_BATCH_SIZE);
+    let data_limit = environment::CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT
+        .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT);
     tracing::info!("Indexer runner is starting with {batch_size}");
     let mut chunks: futures::stream::ReadyChunks<S> = stream.ready_chunks(batch_size);
     while let Some(checkpoints) = tokio::select! {

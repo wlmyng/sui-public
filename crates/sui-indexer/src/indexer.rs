@@ -15,7 +15,6 @@ use sui_data_ingestion_core::{
     DataIngestionMetrics, IndexerExecutor, ReaderOptions, ShimProgressStore, WorkerPool,
 };
 
-use crate::build_json_rpc_server;
 use crate::errors::IndexerError;
 use crate::handlers::checkpoint_handler::new_handlers;
 use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, SnapshotLagConfig};
@@ -23,6 +22,7 @@ use crate::indexer_reader::IndexerReader;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
 use crate::IndexerConfig;
+use crate::{build_json_rpc_server, environment};
 
 const DOWNLOAD_QUEUE_SIZE: usize = 200;
 const INGESTION_READER_TIMEOUT_SECS: u64 = 20;
@@ -74,18 +74,12 @@ impl Indexer {
             .expect("Failed to get latest tx checkpoint sequence number from DB")
             .map(|seq| seq + 1)
             .unwrap_or_default();
-        let download_queue_size = env::var("DOWNLOAD_QUEUE_SIZE")
-            .unwrap_or_else(|_| DOWNLOAD_QUEUE_SIZE.to_string())
-            .parse::<usize>()
-            .expect("Invalid DOWNLOAD_QUEUE_SIZE");
-        let ingestion_reader_timeout_secs = env::var("INGESTION_READER_TIMEOUT_SECS")
-            .unwrap_or_else(|_| INGESTION_READER_TIMEOUT_SECS.to_string())
-            .parse::<u64>()
-            .expect("Invalid INGESTION_READER_TIMEOUT_SECS");
-        let data_limit = std::env::var("CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT")
-            .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT.to_string())
-            .parse::<usize>()
-            .unwrap();
+
+        let download_queue_size = environment::DOWNLOAD_QUEUE_SIZE.unwrap_or(DOWNLOAD_QUEUE_SIZE);
+        let ingestion_reader_timeout_secs =
+            environment::INGESTION_READER_TIMEOUT_SECS.unwrap_or(INGESTION_READER_TIMEOUT_SECS);
+        let data_limit = environment::CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT
+            .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT);
 
         let rest_client = sui_rest_api::Client::new(format!("{}/rest", config.rpc_client_url));
 

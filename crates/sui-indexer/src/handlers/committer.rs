@@ -12,6 +12,7 @@ use tracing::{error, info};
 use sui_rest_api::Client;
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 
+use crate::environment;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
 use crate::types::IndexerResult;
@@ -35,10 +36,8 @@ pub async fn start_tx_checkpoint_commit_task<S>(
     use futures::StreamExt;
 
     info!("Indexer checkpoint commit task started...");
-    let checkpoint_commit_batch_size = std::env::var("CHECKPOINT_COMMIT_BATCH_SIZE")
-        .unwrap_or(CHECKPOINT_COMMIT_BATCH_SIZE.to_string())
-        .parse::<usize>()
-        .unwrap();
+    let checkpoint_commit_batch_size =
+        environment::CHECKPOINT_COMMIT_BATCH_SIZE.unwrap_or(CHECKPOINT_COMMIT_BATCH_SIZE);
     info!("Using checkpoint commit batch size {checkpoint_commit_batch_size}");
 
     let mut stream = mysten_metrics::metered_channel::ReceiverStream::new(tx_indexing_receiver)

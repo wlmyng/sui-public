@@ -4,6 +4,7 @@
 use anyhow::anyhow;
 use std::time::Duration;
 
+use crate::environment;
 use crate::errors::IndexerError;
 use diesel::connection::BoxableConnection;
 #[cfg(feature = "postgres-feature")]
@@ -22,10 +23,6 @@ pub struct ConnectionPoolConfig {
 }
 
 impl ConnectionPoolConfig {
-    const DEFAULT_POOL_SIZE: u32 = 100;
-    const DEFAULT_CONNECTION_TIMEOUT: u64 = 3600;
-    const DEFAULT_STATEMENT_TIMEOUT: u64 = 3600;
-
     fn connection_config(&self) -> ConnectionConfig {
         ConnectionConfig {
             statement_timeout: self.statement_timeout,
@@ -48,18 +45,9 @@ impl ConnectionPoolConfig {
 
 impl Default for ConnectionPoolConfig {
     fn default() -> Self {
-        let db_pool_size = std::env::var("DB_POOL_SIZE")
-            .ok()
-            .and_then(|s| s.parse::<u32>().ok())
-            .unwrap_or(Self::DEFAULT_POOL_SIZE);
-        let conn_timeout_secs = std::env::var("DB_CONNECTION_TIMEOUT")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(Self::DEFAULT_CONNECTION_TIMEOUT);
-        let statement_timeout_secs = std::env::var("DB_STATEMENT_TIMEOUT")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(Self::DEFAULT_STATEMENT_TIMEOUT);
+        let db_pool_size = *environment::DB_POOL_SIZE;
+        let conn_timeout_secs = *environment::DB_CONNECTION_TIMEOUT;
+        let statement_timeout_secs = *environment::DB_STATEMENT_TIMEOUT;
 
         Self {
             pool_size: db_pool_size,

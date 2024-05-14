@@ -4,7 +4,7 @@
 use crate::handlers::committer::start_tx_checkpoint_commit_task;
 use crate::handlers::tx_processor::IndexingPackageBuffer;
 use crate::models::display::StoredDisplay;
-use crate::WriterConfig;
+use crate::{environment, WriterConfig};
 use async_trait::async_trait;
 use itertools::Itertools;
 use move_core_types::account_address::AccountAddress;
@@ -76,10 +76,7 @@ where
     S: IndexerStore + Clone + Sync + Send + 'static,
     T: R2D2Connection,
 {
-    let checkpoint_queue_size = std::env::var("CHECKPOINT_QUEUE_SIZE")
-        .unwrap_or(CHECKPOINT_QUEUE_SIZE.to_string())
-        .parse::<usize>()
-        .unwrap();
+    let checkpoint_queue_size = environment::CHECKPOINT_QUEUE_SIZE.unwrap_or(CHECKPOINT_QUEUE_SIZE);
     let global_metrics = get_metrics().unwrap();
     let (indexed_checkpoint_sender, indexed_checkpoint_receiver) =
         mysten_metrics::metered_channel::channel(

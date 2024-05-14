@@ -36,6 +36,7 @@ use errors::IndexerError;
 
 pub mod apis;
 pub mod db;
+pub mod environment;
 pub mod errors;
 pub mod framework;
 pub mod handlers;

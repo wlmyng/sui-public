@@ -23,6 +23,7 @@ use tracing::info;
 use sui_types::base_types::ObjectID;
 
 use crate::db::ConnectionPool;
+use crate::environment;
 use crate::errors::{Context, IndexerError};
 use crate::handlers::EpochToCommit;
 use crate::handlers::TransactionObjectChangesToCommit;
@@ -139,17 +140,12 @@ impl<T: R2D2Connection> Clone for PgIndexerStore<T> {
 
 impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
     pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics) -> Self {
-        let parallel_chunk_size = std::env::var("PG_COMMIT_PARALLEL_CHUNK_SIZE")
-            .unwrap_or_else(|_e| PG_COMMIT_PARALLEL_CHUNK_SIZE.to_string())
-            .parse::<usize>()
-            .unwrap();
-        let parallel_objects_chunk_size = std::env::var("PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE")
-            .unwrap_or_else(|_e| PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE.to_string())
-            .parse::<usize>()
-            .unwrap();
-        let epochs_to_keep = std::env::var("EPOCHS_TO_KEEP")
-            .map(|s| s.parse::<u64>().ok())
-            .unwrap_or_else(|_e| None);
+        let parallel_chunk_size =
+            environment::PG_COMMIT_PARALLEL_CHUNK_SIZE.unwrap_or(PG_COMMIT_PARALLEL_CHUNK_SIZE);
+        let parallel_objects_chunk_size = environment::PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE
+            .unwrap_or(PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE);
+        let epochs_to_keep = *environment::EPOCHS_TO_KEEP;
+
         let partition_manager = PgPartitionManager::new(blocking_cp.clone())
             .expect("Failed to initialize partition manager");
         let config = PgIndexerStoreConfig {
@@ -1186,9 +1182,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         &self,
         object_changes: Vec<TransactionObjectChangesToCommit>,
     ) -> Result<(), IndexerError> {
-        let skip_history = std::env::var("SKIP_OBJECT_HISTORY")
-            .map(|val| val.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+        let skip_history = environment::SKIP_OBJECT_HISTORY.unwrap_or(false);
         if skip_history {
             info!("skipping object history");
             return Ok(());
@@ -1239,9 +1233,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         start_cp: u64,
         end_cp: u64,
     ) -> Result<(), IndexerError> {
-        let skip_snapshot = std::env::var("SKIP_OBJECT_SNAPSHOT")
-            .map(|val| val.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+        let skip_snapshot = environment::SKIP_OBJECT_SNAPSHOT.unwrap_or(false);
         if skip_snapshot {
             info!("skipping object snapshot");
             return Ok(());
