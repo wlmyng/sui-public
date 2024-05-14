@@ -4,6 +4,7 @@
 use crate::handlers::committer::start_tx_checkpoint_commit_task;
 use crate::handlers::tx_processor::IndexingPackageBuffer;
 use crate::models::display::StoredDisplay;
+use crate::WriterConfig;
 use async_trait::async_trait;
 use itertools::Itertools;
 use move_core_types::account_address::AccountAddress;
@@ -69,6 +70,7 @@ pub async fn new_handlers<S, T>(
     metrics: IndexerMetrics,
     next_checkpoint_sequence_number: CheckpointSequenceNumber,
     cancel: CancellationToken,
+    config: WriterConfig,
 ) -> Result<CheckpointHandler<S, T>, IndexerError>
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
@@ -103,6 +105,7 @@ where
     Ok(CheckpointHandler::new(
         state,
         metrics,
+        config,
         indexed_checkpoint_sender,
         package_tx,
     ))
@@ -111,6 +114,7 @@ where
 pub struct CheckpointHandler<S, T: R2D2Connection + 'static> {
     state: S,
     metrics: IndexerMetrics,
+    config: WriterConfig,
     indexed_checkpoint_sender: mysten_metrics::metered_channel::Sender<CheckpointDataToCommit>,
     // buffers for packages that are being indexed but not committed to DB,
     // they will be periodically GCed to avoid OOM.
@@ -125,7 +129,7 @@ where
     T: R2D2Connection + 'static,
 {
     async fn process_checkpoint(&self, checkpoint: CheckpointData) -> anyhow::Result<()> {
-        let checkpoint = Self::filter_transactions(checkpoint);
+        let checkpoint = self.filter_transactions(checkpoint);
         let mut checkpoints = vec![checkpoint];
         let index_packages = Self::index_packages(&checkpoints, &self.metrics);
         let checkpoint_data = Self::index_checkpoint(
@@ -158,6 +162,7 @@ where
     fn new(
         state: S,
         metrics: IndexerMetrics,
+        config: WriterConfig,
         indexed_checkpoint_sender: mysten_metrics::metered_channel::Sender<CheckpointDataToCommit>,
         package_tx: watch::Receiver<Option<CheckpointSequenceNumber>>,
     ) -> Self {
@@ -174,6 +179,7 @@ where
         Self {
             state,
             metrics,
+            config,
             indexed_checkpoint_sender,
             package_buffer,
             package_resolver,
@@ -636,6 +642,7 @@ where
 
     #[tracing::instrument(skip_all)]
     fn filter_transactions(
+        &self,
         CheckpointData {
             checkpoint_summary,
             checkpoint_contents,
@@ -645,7 +652,7 @@ where
         let ((digests, sigs), transactions): ((Vec<_>, _), _) = checkpoint_contents
             .into_iter_with_signatures()
             .zip(transactions)
-            .filter(Self::keep_transaction)
+            .filter(|d| self.keep_transaction(d))
             .unzip();
         let checkpoint_contents =
             CheckpointContents::new_with_digests_and_signatures(digests, sigs);
@@ -658,6 +665,7 @@ where
 
     #[tracing::instrument(skip_all)]
     fn keep_transaction(
+        &self,
         (_, tx): &(
             (ExecutionDigests, Vec<GenericSignature>),
             CheckpointTransaction,
@@ -665,10 +673,6 @@ where
     ) -> bool {
         use sui_types::object::Data;
         use sui_types::transaction::TransactionKind;
-        let turbos_address: AccountAddress =
-            "0x91bfbc386a41afcfd9b2533058d7e915a1d3829089cc268ff4333d54d6339ca1"
-                .parse()
-                .unwrap();
         if !matches!(
             tx.transaction.data().transaction_data().kind(),
             TransactionKind::ProgrammableTransaction(_)
@@ -678,15 +682,19 @@ where
         }
         tx.output_objects.iter().any(|o| match &o.as_inner().data {
             Data::Move(m) => {
-                if m.type_().address() == turbos_address {
+                let object_pkg = m.type_().address();
+                let touches_pkgs = self
+                    .config
+                    .filter_packages
+                    .iter()
+                    .any(|pkg_id| Self::is_object_from_package(&object_pkg, pkg_id));
+                if touches_pkgs {
                     tracing::info!(
-                        "Found transaction for TURBOS: {}",
+                        "Found transaction {} touching a filtered package",
                         tx.effects.transaction_digest()
                     );
-                    true
-                } else {
-                    false
                 }
+                touches_pkgs
             }
             Data::Package(_) => {
                 tracing::info!(
@@ -696,6 +704,10 @@ where
                 true
             }
         })
+    }
+
+    fn is_object_from_package(object_pkg: &AccountAddress, pkg_id: &AccountAddress) -> bool {
+        object_pkg == pkg_id
     }
 
     fn index_packages(

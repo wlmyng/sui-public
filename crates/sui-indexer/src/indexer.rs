@@ -111,8 +111,15 @@ impl Indexer {
             1,
             DataIngestionMetrics::new(&Registry::new()),
         );
-        let worker =
-            new_handlers::<S, T>(store, rest_client, metrics, watermark, cancel.clone()).await?;
+        let worker = new_handlers::<S, T>(
+            store,
+            rest_client,
+            metrics,
+            watermark,
+            cancel.clone(),
+            config.writer_config.clone(),
+        )
+        .await?;
         let worker_pool = WorkerPool::new(worker, "workflow".to_string(), download_queue_size);
         let extra_reader_options = ReaderOptions {
             batch_size: download_queue_size,

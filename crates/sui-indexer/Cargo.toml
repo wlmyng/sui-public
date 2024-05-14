@@ -28,6 +28,7 @@ rayon.workspace = true
 regex.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tracing.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true, features = ["rt"] }
@@ -61,8 +62,16 @@ downcast = "0.11.0"
 [features]
 pg_integration = []
 default = ["postgres-feature"]
-postgres-feature = ["diesel/postgres", "diesel/postgres_backend", "diesel-derive-enum/postgres"]
-mysql-feature = ["diesel/mysql", "diesel/mysql_backend", "diesel-derive-enum/mysql"]
+postgres-feature = [
+  "diesel/postgres",
+  "diesel/postgres_backend",
+  "diesel-derive-enum/postgres",
+]
+mysql-feature = [
+  "diesel/mysql",
+  "diesel/mysql_backend",
+  "diesel-derive-enum/mysql",
+]
 
 [dev-dependencies]
 sui-keys.workspace = true

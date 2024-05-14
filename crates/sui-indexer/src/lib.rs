@@ -13,6 +13,8 @@ use metrics::IndexerMetrics;
 use mysten_metrics::spawn_monitored_task;
 use prometheus::Registry;
 use secrecy::{ExposeSecret, Secret};
+use serde::{Deserialize, Serialize};
+use serde_with::{serde_as, DisplayFromStr};
 use std::path::PathBuf;
 use sui_types::base_types::{ObjectID, SuiAddress};
 use system_package_task::SystemPackageTask;
@@ -92,6 +94,9 @@ pub struct IndexerConfig {
     pub name_service_registry_id: Option<ObjectID>,
     #[clap(long)]
     pub name_service_reverse_registry_id: Option<ObjectID>,
+    /// Path to TOML file containing configuration for the writer mode.
+    #[clap(long, required = false)]
+    pub writer_config: WriterConfig,
 }
 
 impl IndexerConfig {
@@ -148,7 +153,26 @@ impl Default for IndexerConfig {
             name_service_package_address: None,
             name_service_registry_id: None,
             name_service_reverse_registry_id: None,
+            writer_config: Default::default(),
         }
+    }
+}
+
+#[serde_as]
+#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub struct WriterConfig {
+    #[serde(default)]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
+    pub filter_packages: Vec<ObjectID>,
+}
+
+impl std::str::FromStr for WriterConfig {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let toml_str = std::fs::read_to_string(s)?;
+        Ok(toml::from_str(&toml_str)?)
     }
 }
 
