@@ -112,3 +112,119 @@ Note that you'll need an existing database for the above to work. Replace `test`
 # Change the RPC_CLIENT_URL to http://0.0.0.0:9000 to run indexer against local validator & fullnode
 cargo run --bin sui-indexer --features mysql-feature --no-default-features -- --db-url "<DATABASE_URL>" --rpc-client-url "https://fullnode.devnet.sui.io:443" --fullnode-sync-worker --reset-db
 ```
+
+# Environment variables
+
+```
+#*************************************************************************************************#
+# Rust
+#*************************************************************************************************#
+
+RUST_BACKTRACE=1
+RUST_LOG=info
+
+#*************************************************************************************************#
+# Indexer Config
+#*************************************************************************************************#
+
+DATABASE_USERNAME=postgres
+DATABASE_PASSWORD=
+DATABASE_NAME=
+DATABASE_URL=postgres://$(DATABASE_USERNAME}:${DATABASE_PASSWORD}@localhost/${DATABASE_NAME}
+
+RPC_CLIENT_URL=
+CLIENT_METRIC_PORT=9185
+
+#*************************************************************************************************#
+# DB
+#*************************************************************************************************#
+
+DB_POOL_SIZE=100
+DB_CONNECTION_TIMEOUT=3600
+DB_STATEMENT_TIMEOUT=3600
+
+#*************************************************************************************************#
+# Indexer
+#*************************************************************************************************#
+
+DOWNLOAD_QUEUE_SIZE=200
+INGESTION_READER_TIMEOUT_SECS=20
+# Limit indexing parallelism on big checkpoints to avoid OOM,
+# by limiting the total size of batch checkpoints to ~20MB.
+# On testnet, most checkpoints are < 200KB, some can go up to 50MB.
+CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT=20000000
+CHECKPOINT_PROCESSING_BATCH_SIZE=100
+
+#*************************************************************************************************#
+# Objects Snapshot Processor
+#*************************************************************************************************#
+
+# The objects_snapshot table maintains a delayed snapshot of the objects table,
+# controlled by object_snapshot_max_checkpoint_lag (max lag) and
+# object_snapshot_min_checkpoint_lag (min lag). For instance, with a max lag of 900
+# and a min lag of 300 checkpoints, the objects_snapshot table will lag behind the
+# objects table by 300 to 900 checkpoints. The snapshot is updated when the lag
+# exceeds the max lag threshold, and updates continue until the lag is reduced to
+# the min lag threshold. Then, we have a consistent read range between
+# latest_snapshot_cp and latest_cp based on objects_snapshot and objects_history,
+# where the size of this range varies between the min and max lag values.
+
+OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG=300
+OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG=900
+
+#*************************************************************************************************#
+# Checkpoint Handler
+#*************************************************************************************************#
+
+CHECKPOINT_QUEUE_SIZE=100
+
+#*************************************************************************************************#
+# PG Indexer Store
+#*************************************************************************************************#
+
+PG_COMMIT_PARALLEL_CHUNK_SIZE=100
+PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE=500
+EPOCHS_TO_KEEP=20
+SKIP_OBJECT_HISTORY=false
+SKIP_OBJECT_SNAPSHOT=false
+
+#*************************************************************************************************#
+# Checkpoint Handler
+#*************************************************************************************************#
+
+CHECKPOINT_COMMIT_BATCH_SIZE=100
+
+#*************************************************************************************************#
+# Fetcher
+#*************************************************************************************************#
+
+CHECKPOINT_FETCH_INTERVAL_MS=500
+```
+
+# Useful SQL queries
+
+```sql
+CREATE OR REPLACE FUNCTION drop_partitions_below(table_prefix text, threshold bigint) RETURNS void AS $$
+DECLARE
+    partition_name text;
+    drop_command text;
+BEGIN
+    FOR partition_name IN
+        SELECT tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+        AND tablename ~ ('^' || table_prefix || '_partition_\\d+$')
+        AND substring(tablename from ('\\d+$'))::bigint < threshold
+    LOOP
+        drop_command := 'DROP TABLE IF EXISTS public.' || partition_name || ' CASCADE';
+        RAISE NOTICE 'Executing: %', drop_command; -- This line is optional for debugging
+        EXECUTE drop_command;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+```
+Example:
+```sql
+SELECT drop_partitions_below('transactions', 50);
+
+```
