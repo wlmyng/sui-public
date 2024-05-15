@@ -115,7 +115,7 @@ cargo run --bin sui-indexer --features mysql-feature --no-default-features -- --
 
 # Environment variables
 
-See [environment.rs](/src/environment.rs).
+See [environment.rs](/crates/sui-indexer/src/environment.rs).
 
 # Useful SQL queries
 
