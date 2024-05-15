@@ -228,3 +228,32 @@ Example:
 SELECT drop_partitions_below('transactions', 50);
 
 ```
+
+# Running as a service (systemd)
+
+This assumes 
+- User `sui-indexer` has been set up with the right permissions
+- `/opt/postgresql/config/env` exists with the environment variables for PostgreSQL
+- `/opt/sui-indexer/config/env` exists with the environment variables for `sui-indexer`
+- `/opt/sui-indexer/bin/sui-indexer` is the compiled `sui-indexer` binary
+
+```
+[Unit]
+Description=Sui Indexer Writer
+
+[Service]
+User=sui-indexer
+WorkingDirectory=/opt/sui-indexer/
+EnvironmentFile=/opt/postgresql/config/env
+EnvironmentFile=/opt/sui-indexer/config/env
+ExecStart=/opt/sui-indexer/bin/sui-indexer \
+ --db-url postgres://${DATABASE_USERNAME}:${DATABASE_PASSWORD}@${DATABASE_HOST}/${DATABASE_NAME} \
+ --rpc-client-url ${RPC_CLIENT_URL} \
+ --client-metric-port ${WRITER_CLIENT_METRIC_PORT} \
+ --fullnode-sync-worker
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+```
