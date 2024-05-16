@@ -214,6 +214,8 @@ impl Default for ObjectSnapshotConfig {
 pub struct CheckpointHandlerConfig {
     checkpoint_queue_size: usize,
     checkpoint_commit_batch_size: usize,
+    /// If ommitted ([`None`]), disables filtering. If `Some(vec![])`, commit only non-PTB
+    /// transactions.
     #[serde_as(as = "Option<Vec<DisplayFromStr>>")]
     pub filter_packages: Option<Vec<ObjectID>>,
 }
