@@ -6,12 +6,9 @@ use tracing::info;
 
 use sui_rest_api::Client;
 
-use crate::environment;
 use crate::types::IndexerResult;
+use crate::CONFIG;
 use crate::{metrics::IndexerMetrics, store::IndexerStore};
-
-const OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG: usize = 900;
-const OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG: usize = 300;
 
 pub struct ObjectsSnapshotProcessor<S> {
     pub client: Client,
@@ -45,10 +42,8 @@ impl SnapshotLagConfig {
 
 impl Default for SnapshotLagConfig {
     fn default() -> Self {
-        let snapshot_min_lag = environment::OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG
-            .unwrap_or(OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG);
-        let snapshot_max_lag = environment::OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG
-            .unwrap_or(OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG);
+        let snapshot_min_lag = CONFIG.object_snapshot.objects_snapshot_max_checkpoint_lag();
+        let snapshot_max_lag = CONFIG.object_snapshot.objects_snapshot_min_checkpoint_lag();
 
         SnapshotLagConfig {
             snapshot_min_lag,

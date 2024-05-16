@@ -1,58 +1,44 @@
 use once_cell::sync::Lazy;
 
+macro_rules! env {
+    ($($name:ident: $ty:ty;)*) => {
+        $(
+            pub static $name: Lazy<Option<$ty>> = Lazy::new(|| {
+                std::env::var(stringify!($name))
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+            });
+        )*
+    };
+}
+
 //*************************************************************************************************#
 // DB
 //*************************************************************************************************#
 
-pub static DB_POOL_SIZE: Lazy<u32> = Lazy::new(|| {
-    std::env::var("DB_POOL_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(100)
-});
-pub static DB_CONNECTION_TIMEOUT: Lazy<u64> = Lazy::new(|| {
-    std::env::var("DB_CONNECTION_TIMEOUT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(3600)
-});
-pub static DB_STATEMENT_TIMEOUT: Lazy<u64> = Lazy::new(|| {
-    std::env::var("DB_STATEMENT_TIMEOUT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(3600)
-});
+env! {
+    DB_POOL_SIZE: u32;
+    DB_CONNECTION_TIMEOUT: u64;
+    DB_STATEMENT_TIMEOUT: u64;
+}
 
 //*************************************************************************************************#
 // Indexer
 //*************************************************************************************************#
 
-pub static DOWNLOAD_QUEUE_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("DOWNLOAD_QUEUE_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+env! {
+    DOWNLOAD_QUEUE_SIZE: usize;
+    INGESTION_READER_TIMEOUT_SECS: u64;
+}
 
-pub static INGESTION_READER_TIMEOUT_SECS: Lazy<Option<u64>> = Lazy::new(|| {
-    std::env::var("INGESTION_READER_TIMEOUT_SECS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+//*************************************************************************************************#
+// Runner
+//*************************************************************************************************#
 
-/// Limit indexing parallelism on big checkpoints to avoid OOM,
-/// by limiting the total size of batch checkpoints to ~20MB.
-/// On testnet, most checkpoints are < 200KB, some can go up to 50MB.
-pub static CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-
-pub static CHECKPOINT_PROCESSING_BATCH_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("CHECKPOINT_PROCESSING_BATCH_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+env! {
+    CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT: usize;
+    CHECKPOINT_PROCESSING_BATCH_SIZE: usize;
+}
 
 //*************************************************************************************************#
 // Objects Snapshot Processor
@@ -68,75 +54,36 @@ pub static CHECKPOINT_PROCESSING_BATCH_SIZE: Lazy<Option<usize>> = Lazy::new(|| 
 // latest_snapshot_cp and latest_cp based on objects_snapshot and objects_history,
 // where the size of this range varies between the min and max lag values.
 
-pub static OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-
-pub static OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+env! {
+    OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG: usize;
+    OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG: usize;
+}
 
 //*************************************************************************************************#
 // Checkpoint Handler
 //*************************************************************************************************#
 
-pub static CHECKPOINT_QUEUE_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("CHECKPOINT_QUEUE_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+env! {
+    CHECKPOINT_QUEUE_SIZE: usize;
+    CHECKPOINT_COMMIT_BATCH_SIZE: usize;
+}
 
 //*************************************************************************************************#
 // PG Indexer Store
 //*************************************************************************************************#
 
-pub static PG_COMMIT_PARALLEL_CHUNK_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("PG_COMMIT_PARALLEL_CHUNK_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-pub static PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-pub static EPOCHS_TO_KEEP: Lazy<Option<u64>> = Lazy::new(|| {
-    std::env::var("EPOCHS_TO_KEEP")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-pub static SKIP_OBJECT_HISTORY: Lazy<Option<bool>> = Lazy::new(|| {
-    std::env::var("SKIP_OBJECT_HISTORY")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-pub static SKIP_OBJECT_SNAPSHOT: Lazy<Option<bool>> = Lazy::new(|| {
-    std::env::var("SKIP_OBJECT_SNAPSHOT")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
-
-//*************************************************************************************************#
-// Checkpoint Handler
-//*************************************************************************************************#
-
-pub static CHECKPOINT_COMMIT_BATCH_SIZE: Lazy<Option<usize>> = Lazy::new(|| {
-    std::env::var("CHECKPOINT_COMMIT_BATCH_SIZE")
-        .ok()
-        .and_then(|s| s.parse().ok())
-});
+env! {
+    PG_COMMIT_PARALLEL_CHUNK_SIZE: usize;
+    PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE: usize;
+    EPOCHS_TO_KEEP: u64;
+    SKIP_OBJECT_HISTORY: bool;
+    SKIP_OBJECT_SNAPSHOT: bool;
+}
 
 //*************************************************************************************************#
 // Fetcher
 //*************************************************************************************************#
 
-pub static CHECKPOINT_FETCH_INTERVAL_MS: Lazy<u64> = Lazy::new(|| {
-    std::env::var("CHECKPOINT_FETCH_INTERVAL_MS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(500)
-});
+env! {
+    CHECKPOINT_FETCH_INTERVAL_MS: u64;
+}

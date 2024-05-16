@@ -7,7 +7,7 @@ use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use crate::{environment, metrics::IndexerMetrics};
+use crate::{metrics::IndexerMetrics, CONFIG};
 
 pub struct CheckpointDownloadData {
     pub size: usize,
@@ -44,7 +44,7 @@ impl CheckpointFetcher {
     }
 
     pub async fn run(mut self) {
-        let interval_ms = *environment::CHECKPOINT_FETCH_INTERVAL_MS;
+        let interval_ms = CONFIG.fetcher.checkpoint_fetch_interval_ms();
         let interval_duration = std::time::Duration::from_millis(interval_ms);
         let mut interval = tokio::time::interval(interval_duration);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);

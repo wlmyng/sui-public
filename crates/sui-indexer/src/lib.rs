@@ -11,9 +11,10 @@ use diesel::r2d2::R2D2Connection;
 use jsonrpsee::http_client::{HeaderMap, HeaderValue, HttpClient, HttpClientBuilder};
 use metrics::IndexerMetrics;
 use mysten_metrics::spawn_monitored_task;
+use once_cell::sync::Lazy;
 use prometheus::Registry;
 use secrecy::{ExposeSecret, Secret};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use std::path::PathBuf;
 use sui_types::base_types::{ObjectID, SuiAddress};
@@ -50,13 +51,38 @@ pub mod system_package_task;
 pub mod test_utils;
 pub mod types;
 
+pub static CONFIG: Lazy<Config> = Lazy::new(|| {
+    let CliArgs {
+        mut config,
+        db_url,
+        db_user_name,
+        db_password,
+        db_host,
+        db_port,
+        db_name,
+    } = CliArgs::parse();
+
+    config.indexer.db_url = db_url;
+    config.indexer.db_user_name = db_user_name;
+    config.indexer.db_password = db_password;
+    config.indexer.db_host = db_host;
+    config.indexer.db_port = db_port;
+    config.indexer.db_name = db_name;
+
+    config
+});
+
 #[derive(Parser, Clone, Debug)]
 #[clap(
     name = "Sui indexer",
     about = "An off-fullnode service serving data from Sui protocol",
     rename_all = "kebab-case"
 )]
-pub struct IndexerConfig {
+pub struct CliArgs {
+    /// Path to the TOML configuration file.
+    #[arg(long)]
+    pub config: Config,
+
     #[clap(long)]
     pub db_url: Option<Secret<String>>,
     #[clap(long)]
@@ -69,35 +95,250 @@ pub struct IndexerConfig {
     pub db_port: Option<u16>,
     #[clap(long)]
     pub db_name: Option<String>,
-    #[clap(long, default_value = "http://0.0.0.0:9000", global = true)]
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Config {
+    #[serde(default)]
+    pub indexer: IndexerConfig,
+    #[serde(default)]
+    pub database: DbConfig,
+    #[serde(default)]
+    pub runner: RunnerConfig,
+    #[serde(default)]
+    pub object_snapshot: ObjectSnapshotConfig,
+    #[serde(default)]
+    pub checkpoint_handler: CheckpointHandlerConfig,
+    #[serde(default)]
+    pub postgres_store: PgIndexerStoreConfig,
+    #[serde(default)]
+    pub fetcher: FetcherConfig,
+}
+
+impl std::str::FromStr for Config {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let toml_str = std::fs::read_to_string(s)?;
+        Ok(toml::from_str(&toml_str)?)
+    }
+}
+
+macro_rules! get_with_env_override {
+    ($($attr:ident = $ENV:ident -> $ty:ty;)*) => ($(
+        pub fn $attr(&self) -> $ty {
+            environment::$ENV.unwrap_or(self.$attr)
+        }
+    )*)
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct DbConfig {
+    db_pool_size: u32,
+    db_connection_timeout: u64,
+    db_statement_timeout: u64,
+}
+
+impl Default for DbConfig {
+    fn default() -> Self {
+        Self {
+            db_pool_size: 100,
+            db_connection_timeout: 3600,
+            db_statement_timeout: 3600,
+        }
+    }
+}
+
+impl DbConfig {
+    get_with_env_override! {
+        db_pool_size = DB_POOL_SIZE -> u32;
+        db_connection_timeout = DB_CONNECTION_TIMEOUT -> u64;
+        db_statement_timeout = DB_STATEMENT_TIMEOUT -> u64;
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct RunnerConfig {
+    /// Limit indexing parallelism on big checkpoints to avoid OOM,
+    /// by limiting the total size of batch checkpoints to ~20MB.
+    /// On testnet, most checkpoints are < 200KB, some can go up to 50MB.
+    checkpoint_processing_batch_data_limit: usize,
+    checkpoint_processing_batch_size: usize,
+}
+
+impl RunnerConfig {
+    get_with_env_override! {
+        checkpoint_processing_batch_data_limit = CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT -> usize;
+        checkpoint_processing_batch_size = CHECKPOINT_PROCESSING_BATCH_SIZE -> usize;
+    }
+}
+
+impl Default for RunnerConfig {
+    fn default() -> Self {
+        Self {
+            checkpoint_processing_batch_data_limit: 20000000,
+            checkpoint_processing_batch_size: 100,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ObjectSnapshotConfig {
+    objects_snapshot_min_checkpoint_lag: usize,
+    objects_snapshot_max_checkpoint_lag: usize,
+}
+
+impl ObjectSnapshotConfig {
+    get_with_env_override! {
+        objects_snapshot_min_checkpoint_lag = OBJECTS_SNAPSHOT_MIN_CHECKPOINT_LAG -> usize;
+        objects_snapshot_max_checkpoint_lag = OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG -> usize;
+    }
+}
+
+impl Default for ObjectSnapshotConfig {
+    fn default() -> Self {
+        Self {
+            objects_snapshot_min_checkpoint_lag: 300,
+            objects_snapshot_max_checkpoint_lag: 900,
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct CheckpointHandlerConfig {
+    checkpoint_queue_size: usize,
+    checkpoint_commit_batch_size: usize,
+    #[serde_as(as = "Option<Vec<DisplayFromStr>>")]
+    pub filter_packages: Option<Vec<ObjectID>>,
+}
+
+impl CheckpointHandlerConfig {
+    get_with_env_override! {
+        checkpoint_queue_size = CHECKPOINT_QUEUE_SIZE -> usize;
+        checkpoint_commit_batch_size = CHECKPOINT_COMMIT_BATCH_SIZE -> usize;
+    }
+}
+
+impl Default for CheckpointHandlerConfig {
+    fn default() -> Self {
+        Self {
+            checkpoint_queue_size: 100,
+            checkpoint_commit_batch_size: 100,
+            filter_packages: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct PgIndexerStoreConfig {
+    /// The amount of rows to update in one DB transcation
+    pg_commit_parallel_chunk_size: usize,
+    /// The amount of rows to update in one DB transcation, for objects particularly
+    /// Having this number too high may cause many db deadlocks because of
+    /// optimistic locking.
+    pg_commit_objects_parallel_chunk_size: usize,
+    epochs_to_keep: Option<u64>,
+    skip_object_history: bool,
+    skip_object_snapshot: bool,
+}
+
+impl PgIndexerStoreConfig {
+    get_with_env_override! {
+        pg_commit_parallel_chunk_size = PG_COMMIT_PARALLEL_CHUNK_SIZE -> usize;
+        pg_commit_objects_parallel_chunk_size = PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE -> usize;
+        skip_object_history = SKIP_OBJECT_HISTORY -> bool;
+        skip_object_snapshot = SKIP_OBJECT_SNAPSHOT -> bool;
+    }
+
+    pub fn epochs_to_keep(&self) -> Option<u64> {
+        environment::EPOCHS_TO_KEEP.or(self.epochs_to_keep)
+    }
+}
+
+impl Default for PgIndexerStoreConfig {
+    fn default() -> Self {
+        Self {
+            pg_commit_parallel_chunk_size: 100,
+            pg_commit_objects_parallel_chunk_size: 500,
+            epochs_to_keep: None,
+            skip_object_history: false,
+            skip_object_snapshot: false,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct FetcherConfig {
+    checkpoint_fetch_interval_ms: u64,
+}
+
+impl FetcherConfig {
+    get_with_env_override! {
+        checkpoint_fetch_interval_ms = CHECKPOINT_FETCH_INTERVAL_MS -> u64;
+    }
+}
+
+impl Default for FetcherConfig {
+    fn default() -> Self {
+        Self {
+            checkpoint_fetch_interval_ms: 500,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct IndexerConfig {
+    // The database fields are not deserialized by Serde and must be instead initialized by other
+    // means.
+    #[serde(default = "default_db_url", skip)]
+    pub db_url: Option<Secret<String>>,
+    #[serde(default, skip)]
+    pub db_user_name: Option<String>,
+    #[serde(default, skip)]
+    pub db_password: Option<Secret<String>>,
+    #[serde(default, skip)]
+    pub db_host: Option<String>,
+    #[serde(default, skip)]
+    pub db_port: Option<u16>,
+    #[serde(default, skip)]
+    pub db_name: Option<String>,
+
+    #[serde(default = "default_rpc_client_url")]
     pub rpc_client_url: String,
-    #[clap(long, default_value = Some("https://checkpoints.mainnet.sui.io"), global = true)]
     pub remote_store_url: Option<String>,
-    #[clap(long, default_value = "0.0.0.0", global = true)]
+    #[serde(default = "default_client_metric_host")]
     pub client_metric_host: String,
-    #[clap(long, default_value = "9184", global = true)]
+    #[serde(default = "default_client_metric_port")]
     pub client_metric_port: u16,
-    #[clap(long, default_value = "0.0.0.0", global = true)]
+    #[serde(default = "default_rpc_server_url")]
     pub rpc_server_url: String,
-    #[clap(long, default_value = "9000", global = true)]
+    #[serde(default = "default_rpc_server_port")]
     pub rpc_server_port: u16,
-    #[clap(long)]
+    #[serde(default)]
     pub reset_db: bool,
-    #[clap(long)]
+    #[serde(default)]
     pub fullnode_sync_worker: bool,
-    #[clap(long)]
+    #[serde(default)]
     pub rpc_server_worker: bool,
-    #[clap(long)]
     pub data_ingestion_path: Option<PathBuf>,
-    #[clap(long)]
     pub name_service_package_address: Option<SuiAddress>,
-    #[clap(long)]
     pub name_service_registry_id: Option<ObjectID>,
-    #[clap(long)]
     pub name_service_reverse_registry_id: Option<ObjectID>,
-    /// Path to TOML file containing configuration for the writer mode.
-    #[clap(long, required = false)]
-    pub writer_config: WriterConfig,
+
+    // Added to the original
+    #[serde(default = "default_download_queue_size")]
+    download_queue_size: usize,
+    #[serde(default = "default_ingestion_reader_timeout_secs")]
+    ingestion_reader_timeout_secs: u64,
 }
 
 impl IndexerConfig {
@@ -128,53 +369,73 @@ impl IndexerConfig {
             _ => Err(anyhow!("Invalid db connection config, either db_url or (db_user_name, db_password, db_host, db_port, db_name) must be provided")),
         }
     }
+
+    get_with_env_override! {
+        download_queue_size = DOWNLOAD_QUEUE_SIZE -> usize;
+        ingestion_reader_timeout_secs = INGESTION_READER_TIMEOUT_SECS -> u64;
+    }
 }
 
 impl Default for IndexerConfig {
     fn default() -> Self {
         Self {
-            db_url: Some(secrecy::Secret::new(
-                "postgres://postgres:postgres@localhost:5432/sui_indexer".to_string(),
-            )),
+            db_url: default_db_url(),
             db_user_name: None,
             db_password: None,
             db_host: None,
             db_port: None,
             db_name: None,
-            rpc_client_url: "http://127.0.0.1:9000".to_string(),
-            remote_store_url: Some("https://checkpoints.mainnet.sui.io".to_string()),
-            client_metric_host: "0.0.0.0".to_string(),
-            client_metric_port: 9184,
-            rpc_server_url: "0.0.0.0".to_string(),
-            rpc_server_port: 9000,
+            rpc_client_url: default_rpc_client_url(),
+            remote_store_url: None,
+            client_metric_host: default_client_metric_host(),
+            client_metric_port: default_client_metric_port(),
+            rpc_server_url: default_rpc_server_url(),
+            rpc_server_port: default_rpc_server_port(),
             reset_db: false,
-            fullnode_sync_worker: true,
-            rpc_server_worker: true,
+            fullnode_sync_worker: false,
+            rpc_server_worker: false,
             data_ingestion_path: None,
             name_service_package_address: None,
             name_service_registry_id: None,
             name_service_reverse_registry_id: None,
-            writer_config: Default::default(),
+            download_queue_size: default_download_queue_size(),
+            ingestion_reader_timeout_secs: default_ingestion_reader_timeout_secs(),
         }
     }
 }
 
-#[serde_as]
-#[derive(Serialize, Clone, Deserialize, Debug, Eq, PartialEq, Default)]
-#[serde(rename_all = "kebab-case")]
-pub struct WriterConfig {
-    #[serde(default)]
-    #[serde_as(as = "Vec<DisplayFromStr>")]
-    pub filter_packages: Vec<ObjectID>,
+fn default_db_url() -> Option<Secret<String>> {
+    Some(secrecy::Secret::new(
+        "postgres://postgres:postgres@localhost:5432/sui_indexer".to_string(),
+    ))
 }
 
-impl std::str::FromStr for WriterConfig {
-    type Err = anyhow::Error;
+pub fn default_rpc_client_url() -> String {
+    "http://0.0.0.0:9000".to_owned()
+}
 
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        let toml_str = std::fs::read_to_string(s)?;
-        Ok(toml::from_str(&toml_str)?)
-    }
+pub fn default_client_metric_host() -> String {
+    "0.0.0.0".to_owned()
+}
+
+pub fn default_client_metric_port() -> u16 {
+    9184
+}
+
+pub fn default_rpc_server_url() -> String {
+    "0.0.0.0".to_owned()
+}
+
+pub fn default_rpc_server_port() -> u16 {
+    9000
+}
+
+pub fn default_download_queue_size() -> usize {
+    200
+}
+
+pub fn default_ingestion_reader_timeout_secs() -> u64 {
+    20
 }
 
 pub async fn build_json_rpc_server<T: R2D2Connection>(

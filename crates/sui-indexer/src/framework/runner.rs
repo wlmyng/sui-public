@@ -3,17 +3,11 @@
 
 use tokio_util::sync::CancellationToken;
 
-use crate::environment;
 use crate::metrics::IndexerMetrics;
+use crate::CONFIG;
 
 use super::fetcher::CheckpointDownloadData;
 use super::interface::Handler;
-
-// Limit indexing parallelism on big checkpoints to avoid OOM,
-// by limiting the total size of batch checkpoints to ~20MB.
-// On testnet, most checkpoints are < 200KB, some can go up to 50MB.
-const CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT: usize = 20000000;
-const CHECKPOINT_PROCESSING_BATCH_SIZE: usize = 100;
 
 pub async fn run<S>(
     stream: S,
@@ -24,10 +18,8 @@ pub async fn run<S>(
     S: futures::Stream<Item = CheckpointDownloadData> + std::marker::Unpin,
 {
     use futures::StreamExt;
-    let batch_size =
-        environment::CHECKPOINT_PROCESSING_BATCH_SIZE.unwrap_or(CHECKPOINT_PROCESSING_BATCH_SIZE);
-    let data_limit = environment::CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT
-        .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT);
+    let batch_size = CONFIG.runner.checkpoint_processing_batch_size();
+    let data_limit = CONFIG.runner.checkpoint_processing_batch_data_limit();
     tracing::info!("Indexer runner is starting with {batch_size}");
     let mut chunks: futures::stream::ReadyChunks<S> = stream.ready_chunks(batch_size);
     while let Some(checkpoints) = tokio::select! {

@@ -15,21 +15,14 @@ use sui_data_ingestion_core::{
     DataIngestionMetrics, IndexerExecutor, ReaderOptions, ShimProgressStore, WorkerPool,
 };
 
+use crate::build_json_rpc_server;
 use crate::errors::IndexerError;
 use crate::handlers::checkpoint_handler::new_handlers;
 use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, SnapshotLagConfig};
 use crate::indexer_reader::IndexerReader;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
-use crate::IndexerConfig;
-use crate::{build_json_rpc_server, environment};
-
-const DOWNLOAD_QUEUE_SIZE: usize = 200;
-const INGESTION_READER_TIMEOUT_SECS: u64 = 20;
-// Limit indexing parallelism on big checkpoints to avoid OOM,
-// by limiting the total size of batch checkpoints to ~20MB.
-// On testnet, most checkpoints are < 200KB, some can go up to 50MB.
-const CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT: usize = 20000000;
+use crate::{IndexerConfig, CONFIG};
 
 pub struct Indexer;
 
@@ -75,11 +68,9 @@ impl Indexer {
             .map(|seq| seq + 1)
             .unwrap_or_default();
 
-        let download_queue_size = environment::DOWNLOAD_QUEUE_SIZE.unwrap_or(DOWNLOAD_QUEUE_SIZE);
-        let ingestion_reader_timeout_secs =
-            environment::INGESTION_READER_TIMEOUT_SECS.unwrap_or(INGESTION_READER_TIMEOUT_SECS);
-        let data_limit = environment::CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT
-            .unwrap_or(CHECKPOINT_PROCESSING_BATCH_DATA_LIMIT);
+        let download_queue_size = CONFIG.indexer.download_queue_size();
+        let ingestion_reader_timeout_secs = CONFIG.indexer.ingestion_reader_timeout_secs();
+        let data_limit = CONFIG.runner.checkpoint_processing_batch_data_limit();
 
         let rest_client = sui_rest_api::Client::new(format!("{}/rest", config.rpc_client_url));
 
@@ -105,15 +96,8 @@ impl Indexer {
             1,
             DataIngestionMetrics::new(&Registry::new()),
         );
-        let worker = new_handlers::<S, T>(
-            store,
-            rest_client,
-            metrics,
-            watermark,
-            cancel.clone(),
-            config.writer_config.clone(),
-        )
-        .await?;
+        let worker =
+            new_handlers::<S, T>(store, rest_client, metrics, watermark, cancel.clone()).await?;
         let worker_pool = WorkerPool::new(worker, "workflow".to_string(), download_queue_size);
         let extra_reader_options = ReaderOptions {
             batch_size: download_queue_size,

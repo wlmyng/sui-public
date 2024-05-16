@@ -12,15 +12,12 @@ use tracing::{error, info};
 use sui_rest_api::Client;
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 
-use crate::environment;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
 use crate::types::IndexerResult;
+use crate::CONFIG;
 
 use super::{CheckpointDataToCommit, EpochToCommit};
-
-const CHECKPOINT_COMMIT_BATCH_SIZE: usize = 100;
-const OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG: u64 = 900;
 
 pub async fn start_tx_checkpoint_commit_task<S>(
     state: S,
@@ -36,8 +33,7 @@ pub async fn start_tx_checkpoint_commit_task<S>(
     use futures::StreamExt;
 
     info!("Indexer checkpoint commit task started...");
-    let checkpoint_commit_batch_size =
-        environment::CHECKPOINT_COMMIT_BATCH_SIZE.unwrap_or(CHECKPOINT_COMMIT_BATCH_SIZE);
+    let checkpoint_commit_batch_size = CONFIG.checkpoint_handler.checkpoint_commit_batch_size();
     info!("Using checkpoint commit batch size {checkpoint_commit_batch_size}");
 
     let mut stream = mysten_metrics::metered_channel::ReceiverStream::new(tx_indexing_receiver)
@@ -101,7 +97,9 @@ pub async fn start_tx_checkpoint_commit_task<S>(
         }
         // this is a one-way flip in case indexer falls behind again, so that the objects snapshot
         // table will not be populated by both committer and async snapshot processor at the same time.
-        if latest_committed_cp + OBJECTS_SNAPSHOT_MAX_CHECKPOINT_LAG > latest_fn_cp {
+        if latest_committed_cp + CONFIG.object_snapshot.objects_snapshot_max_checkpoint_lag() as u64
+            > latest_fn_cp
+        {
             object_snapshot_backfill_mode = false;
         }
     }

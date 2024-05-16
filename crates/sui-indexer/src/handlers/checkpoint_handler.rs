@@ -4,7 +4,7 @@
 use crate::handlers::committer::start_tx_checkpoint_commit_task;
 use crate::handlers::tx_processor::IndexingPackageBuffer;
 use crate::models::display::StoredDisplay;
-use crate::{environment, WriterConfig};
+use crate::CONFIG;
 use async_trait::async_trait;
 use itertools::Itertools;
 use move_core_types::account_address::AccountAddress;
@@ -62,21 +62,18 @@ use super::CheckpointDataToCommit;
 use super::EpochToCommit;
 use super::TransactionObjectChangesToCommit;
 
-const CHECKPOINT_QUEUE_SIZE: usize = 100;
-
 pub async fn new_handlers<S, T>(
     state: S,
     client: Client,
     metrics: IndexerMetrics,
     next_checkpoint_sequence_number: CheckpointSequenceNumber,
     cancel: CancellationToken,
-    config: WriterConfig,
 ) -> Result<CheckpointHandler<S, T>, IndexerError>
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
     T: R2D2Connection,
 {
-    let checkpoint_queue_size = environment::CHECKPOINT_QUEUE_SIZE.unwrap_or(CHECKPOINT_QUEUE_SIZE);
+    let checkpoint_queue_size = CONFIG.checkpoint_handler.checkpoint_queue_size();
     let global_metrics = get_metrics().unwrap();
     let (indexed_checkpoint_sender, indexed_checkpoint_receiver) =
         mysten_metrics::metered_channel::channel(
@@ -102,7 +99,6 @@ where
     Ok(CheckpointHandler::new(
         state,
         metrics,
-        config,
         indexed_checkpoint_sender,
         package_tx,
     ))
@@ -111,7 +107,7 @@ where
 pub struct CheckpointHandler<S, T: R2D2Connection + 'static> {
     state: S,
     metrics: IndexerMetrics,
-    config: WriterConfig,
+    filter_packages: Option<Vec<ObjectID>>,
     indexed_checkpoint_sender: mysten_metrics::metered_channel::Sender<CheckpointDataToCommit>,
     // buffers for packages that are being indexed but not committed to DB,
     // they will be periodically GCed to avoid OOM.
@@ -159,7 +155,6 @@ where
     fn new(
         state: S,
         metrics: IndexerMetrics,
-        config: WriterConfig,
         indexed_checkpoint_sender: mysten_metrics::metered_channel::Sender<CheckpointDataToCommit>,
         package_tx: watch::Receiver<Option<CheckpointSequenceNumber>>,
     ) -> Self {
@@ -176,7 +171,7 @@ where
         Self {
             state,
             metrics,
-            config,
+            filter_packages: CONFIG.checkpoint_handler.filter_packages.clone(),
             indexed_checkpoint_sender,
             package_buffer,
             package_resolver,
@@ -646,10 +641,17 @@ where
             transactions,
         }: CheckpointData,
     ) -> CheckpointData {
+        let Some(filter) = &self.filter_packages else {
+            return CheckpointData {
+                checkpoint_summary,
+                checkpoint_contents,
+                transactions,
+            };
+        };
         let ((digests, sigs), transactions): ((Vec<_>, _), _) = checkpoint_contents
             .into_iter_with_signatures()
             .zip(transactions)
-            .filter(|d| self.keep_transaction(d))
+            .filter(|d| Self::keep_transaction(filter, d))
             .unzip();
         let checkpoint_contents =
             CheckpointContents::new_with_digests_and_signatures(digests, sigs);
@@ -662,7 +664,7 @@ where
 
     #[tracing::instrument(skip_all)]
     fn keep_transaction(
-        &self,
+        filter: &[ObjectID],
         (_, tx): &(
             (ExecutionDigests, Vec<GenericSignature>),
             CheckpointTransaction,
@@ -680,9 +682,7 @@ where
         tx.output_objects.iter().any(|o| match &o.as_inner().data {
             Data::Move(m) => {
                 let object_pkg = m.type_().address();
-                let touches_pkgs = self
-                    .config
-                    .filter_packages
+                let touches_pkgs = filter
                     .iter()
                     .any(|pkg_id| Self::is_object_from_package(&object_pkg, pkg_id));
                 if touches_pkgs {

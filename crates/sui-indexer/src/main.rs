@@ -1,12 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use clap::Parser;
 use tracing::info;
 
 use sui_indexer::errors::IndexerError;
 use sui_indexer::metrics::start_prometheus_server;
-use sui_indexer::IndexerConfig;
+use sui_indexer::CONFIG;
 
 #[tokio::main]
 async fn main() -> Result<(), IndexerError> {
@@ -15,13 +14,7 @@ async fn main() -> Result<(), IndexerError> {
         .with_env()
         .init();
 
-    let mut indexer_config = IndexerConfig::parse();
-    // TODO: remove. Temporary safeguard to migrate to `rpc_client_url` usage
-    if indexer_config.rpc_client_url.contains("testnet") {
-        indexer_config.remote_store_url = Some("https://checkpoints.testnet.sui.io".to_string());
-    } else if indexer_config.rpc_client_url.contains("mainnet") {
-        indexer_config.remote_store_url = Some("https://checkpoints.mainnet.sui.io".to_string());
-    }
+    let indexer_config = &CONFIG.indexer;
     info!("Parsed indexer config: {:#?}", indexer_config);
     let (_registry_service, registry) = start_prometheus_server(
         // NOTE: this parses the input host addr and port number for socket addr,
@@ -35,7 +28,7 @@ async fn main() -> Result<(), IndexerError> {
         indexer_config.rpc_client_url.as_str(),
     )?;
     #[cfg(feature = "postgres-feature")]
-    sui_indexer::db::setup_postgres::setup(indexer_config.clone(), registry.clone()).await?;
+    sui_indexer::db::setup_postgres::setup(registry.clone()).await?;
 
     #[cfg(feature = "mysql-feature")]
     #[cfg(not(feature = "postgres-feature"))]

@@ -4,8 +4,8 @@
 use anyhow::anyhow;
 use std::time::Duration;
 
-use crate::environment;
 use crate::errors::IndexerError;
+use crate::CONFIG;
 use diesel::connection::BoxableConnection;
 #[cfg(feature = "postgres-feature")]
 use diesel::query_dsl::RunQueryDsl;
@@ -45,9 +45,9 @@ impl ConnectionPoolConfig {
 
 impl Default for ConnectionPoolConfig {
     fn default() -> Self {
-        let db_pool_size = *environment::DB_POOL_SIZE;
-        let conn_timeout_secs = *environment::DB_CONNECTION_TIMEOUT;
-        let statement_timeout_secs = *environment::DB_STATEMENT_TIMEOUT;
+        let db_pool_size = CONFIG.database.db_pool_size();
+        let conn_timeout_secs = CONFIG.database.db_connection_timeout();
+        let statement_timeout_secs = CONFIG.database.db_statement_timeout();
 
         Self {
             pool_size: db_pool_size,
@@ -185,7 +185,7 @@ pub mod setup_postgres {
     use crate::indexer::Indexer;
     use crate::metrics::IndexerMetrics;
     use crate::store::PgIndexerStore;
-    use crate::IndexerConfig;
+    use crate::CONFIG;
     use anyhow::anyhow;
     use diesel::migration::MigrationSource;
     use diesel::{PgConnection, RunQueryDsl};
@@ -242,10 +242,8 @@ pub mod setup_postgres {
         Ok(())
     }
 
-    pub async fn setup(
-        indexer_config: IndexerConfig,
-        registry: Registry,
-    ) -> Result<(), IndexerError> {
+    pub async fn setup(registry: Registry) -> Result<(), IndexerError> {
+        let indexer_config = &CONFIG.indexer;
         let db_url_secret = indexer_config.get_db_url().map_err(|e| {
             IndexerError::PgPoolConnectionError(format!(
                 "Failed parsing database url with error {:?}",

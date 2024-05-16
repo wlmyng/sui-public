@@ -23,7 +23,6 @@ use tracing::info;
 use sui_types::base_types::ObjectID;
 
 use crate::db::ConnectionPool;
-use crate::environment;
 use crate::errors::{Context, IndexerError};
 use crate::handlers::EpochToCommit;
 use crate::handlers::TransactionObjectChangesToCommit;
@@ -44,6 +43,7 @@ use crate::schema::{
     tx_senders,
 };
 use crate::types::{IndexedCheckpoint, IndexedEvent, IndexedPackage, IndexedTransaction, TxIndex};
+use crate::CONFIG;
 use crate::{
     insert_or_ignore_into, on_conflict_do_update, read_only_blocking,
     transactional_blocking_with_retry,
@@ -73,12 +73,6 @@ macro_rules! chunk {
 // TODO: I think with the `per_db_tx` params, `PG_COMMIT_CHUNK_SIZE_INTRA_DB_TX`
 // is now less relevant. We should do experiments and remove it if it's true.
 const PG_COMMIT_CHUNK_SIZE_INTRA_DB_TX: usize = 1000;
-// The amount of rows to update in one DB transcation
-const PG_COMMIT_PARALLEL_CHUNK_SIZE: usize = 100;
-// The amount of rows to update in one DB transcation, for objects particularly
-// Having this number too high may cause many db deadlocks because of
-// optimistic locking.
-const PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE: usize = 500;
 const PG_DB_COMMIT_SLEEP_DURATION: Duration = Duration::from_secs(3600);
 
 // with rn = 1, we only select the latest version of each object,
@@ -140,11 +134,11 @@ impl<T: R2D2Connection> Clone for PgIndexerStore<T> {
 
 impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
     pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics) -> Self {
-        let parallel_chunk_size =
-            environment::PG_COMMIT_PARALLEL_CHUNK_SIZE.unwrap_or(PG_COMMIT_PARALLEL_CHUNK_SIZE);
-        let parallel_objects_chunk_size = environment::PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE
-            .unwrap_or(PG_COMMIT_OBJECTS_PARALLEL_CHUNK_SIZE);
-        let epochs_to_keep = *environment::EPOCHS_TO_KEEP;
+        let parallel_chunk_size = CONFIG.postgres_store.pg_commit_parallel_chunk_size();
+        let parallel_objects_chunk_size = CONFIG
+            .postgres_store
+            .pg_commit_objects_parallel_chunk_size();
+        let epochs_to_keep = CONFIG.postgres_store.epochs_to_keep();
 
         let partition_manager = PgPartitionManager::new(blocking_cp.clone())
             .expect("Failed to initialize partition manager");
@@ -1182,7 +1176,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         &self,
         object_changes: Vec<TransactionObjectChangesToCommit>,
     ) -> Result<(), IndexerError> {
-        let skip_history = environment::SKIP_OBJECT_HISTORY.unwrap_or(false);
+        let skip_history = CONFIG.postgres_store.skip_object_history();
         if skip_history {
             info!("skipping object history");
             return Ok(());
@@ -1233,7 +1227,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         start_cp: u64,
         end_cp: u64,
     ) -> Result<(), IndexerError> {
-        let skip_snapshot = environment::SKIP_OBJECT_SNAPSHOT.unwrap_or(false);
+        let skip_snapshot = CONFIG.postgres_store.skip_object_snapshot();
         if skip_snapshot {
             info!("skipping object snapshot");
             return Ok(());
