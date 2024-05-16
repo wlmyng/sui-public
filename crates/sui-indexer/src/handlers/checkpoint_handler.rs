@@ -808,13 +808,7 @@ async fn get_move_struct_layout_map(
                         "MoveTypeLayout is not Struct".to_string(),
                     )),
                 }?;
-                Ok::<
-                    (
-                        move_core_types::language_storage::StructTag,
-                        move_core_types::annotated_value::MoveStructLayout,
-                    ),
-                    IndexerError,
-                >((struct_tag, move_struct_layout))
+                Ok::<(StructTag, MoveStructLayout), IndexerError>((struct_tag, move_struct_layout))
             }
         })
         .collect::<Vec<_>>();
