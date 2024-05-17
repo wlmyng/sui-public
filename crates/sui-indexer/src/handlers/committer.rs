@@ -4,7 +4,6 @@
 use std::collections::{BTreeMap, HashMap};
 
 use tap::tap::TapFallible;
-use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 use tracing::{error, info};
@@ -24,7 +23,6 @@ pub async fn start_tx_checkpoint_commit_task<S>(
     client: Client,
     metrics: IndexerMetrics,
     tx_indexing_receiver: mysten_metrics::metered_channel::Receiver<CheckpointDataToCommit>,
-    commit_notifier: watch::Sender<Option<CheckpointSequenceNumber>>,
     mut next_checkpoint_sequence_number: CheckpointSequenceNumber,
     cancel: CancellationToken,
 ) where
@@ -76,7 +74,6 @@ pub async fn start_tx_checkpoint_commit_task<S>(
                     batch,
                     epoch,
                     &metrics,
-                    &commit_notifier,
                     object_snapshot_backfill_mode,
                 )
                 .await;
@@ -84,15 +81,7 @@ pub async fn start_tx_checkpoint_commit_task<S>(
             }
         }
         if !batch.is_empty() && unprocessed.is_empty() {
-            commit_checkpoints(
-                &state,
-                batch,
-                None,
-                &metrics,
-                &commit_notifier,
-                object_snapshot_backfill_mode,
-            )
-            .await;
+            commit_checkpoints(&state, batch, None, &metrics, object_snapshot_backfill_mode).await;
             batch = vec![];
         }
         // this is a one-way flip in case indexer falls behind again, so that the objects snapshot
@@ -115,7 +104,6 @@ async fn commit_checkpoints<S>(
     indexed_checkpoint_batch: Vec<CheckpointDataToCommit>,
     epoch: Option<EpochToCommit>,
     metrics: &IndexerMetrics,
-    commit_notifier: &watch::Sender<Option<CheckpointSequenceNumber>>,
     object_snapshot_backfill_mode: bool,
 ) where
     S: IndexerStore + Clone + Sync + Send + 'static,
@@ -215,10 +203,6 @@ async fn commit_checkpoints<S>(
         })
         .expect("Persisting data into DB should not fail.");
     let elapsed = guard.stop_and_record();
-
-    commit_notifier
-        .send(Some(last_checkpoint_seq))
-        .expect("Commit watcher should not be closed");
 
     info!(
         elapsed,

@@ -19,7 +19,7 @@ use sui_types::object::ObjectRead;
 
 use crate::errors::IndexerError;
 use crate::schema::{objects, objects_history, objects_snapshot};
-use crate::types::{IndexedDeletedObject, IndexedObject, ObjectStatus};
+use crate::types::{DynamicFieldInfoShort, IndexedDeletedObject, IndexedObject, ObjectStatus};
 
 #[derive(Queryable)]
 pub struct DynamicFieldColumn {
@@ -233,26 +233,23 @@ impl From<IndexedObject> for StoredObject {
             df_info,
         }: IndexedObject,
     ) -> Self {
-        let (df_kind, df_name, df_object_type, df_object_id) = if let Some(DynamicFieldInfo {
-            name,
-            type_,
-            object_type,
-            object_id,
-            ..
-        }) = df_info
-        {
-            (
-                Some(match type_ {
-                    DynamicFieldType::DynamicField => 0,
-                    DynamicFieldType::DynamicObject => 1,
-                }),
-                Some(bcs::to_bytes(&name).unwrap()),
-                Some(object_type),
-                Some(object_id.to_vec()),
-            )
-        } else {
-            (None, None, None, None)
-        };
+        let (df_kind, df_name, df_object_type, df_object_id) =
+            if let Some(DynamicFieldInfoShort {
+                type_, object_id, ..
+            }) = df_info
+            {
+                (
+                    Some(match type_ {
+                        DynamicFieldType::DynamicField => 0,
+                        DynamicFieldType::DynamicObject => 1,
+                    }),
+                    None,
+                    None,
+                    Some(object_id.to_vec()),
+                )
+            } else {
+                (None, None, None, None)
+            };
         Self {
             object_id: object_id.to_vec(),
             object_version: object_version as i64,

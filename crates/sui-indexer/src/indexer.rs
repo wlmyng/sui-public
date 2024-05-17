@@ -61,12 +61,16 @@ impl Indexer {
             env!("CARGO_PKG_VERSION")
         );
 
-        let watermark = store
-            .get_latest_checkpoint_sequence_number()
-            .await
-            .expect("Failed to get latest tx checkpoint sequence number from DB")
-            .map(|seq| seq + 1)
-            .unwrap_or_default();
+        let watermark = if let Some(number) = CONFIG.indexer.starting_checkpoint_number {
+            number
+        } else {
+            store
+                .get_latest_checkpoint_sequence_number()
+                .await
+                .expect("Failed to get latest tx checkpoint sequence number from DB")
+                .map(|seq| seq + 1)
+                .unwrap_or_default()
+        };
 
         let download_queue_size = CONFIG.indexer.download_queue_size();
         let ingestion_reader_timeout_secs = CONFIG.indexer.ingestion_reader_timeout_secs();
@@ -97,7 +101,7 @@ impl Indexer {
             DataIngestionMetrics::new(&Registry::new()),
         );
         let worker =
-            new_handlers::<S, T>(store, rest_client, metrics, watermark, cancel.clone()).await?;
+            new_handlers::<S>(store, rest_client, metrics, watermark, cancel.clone()).await?;
         let worker_pool = WorkerPool::new(worker, "workflow".to_string(), download_queue_size);
         let extra_reader_options = ReaderOptions {
             batch_size: download_queue_size,

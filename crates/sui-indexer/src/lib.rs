@@ -341,6 +341,8 @@ pub struct IndexerConfig {
     download_queue_size: usize,
     #[serde(default = "default_ingestion_reader_timeout_secs")]
     ingestion_reader_timeout_secs: u64,
+    #[serde(default)]
+    pub starting_checkpoint_number: Option<u64>,
 }
 
 impl IndexerConfig {
@@ -402,6 +404,7 @@ impl Default for IndexerConfig {
             name_service_reverse_registry_id: None,
             download_queue_size: default_download_queue_size(),
             ingestion_reader_timeout_secs: default_ingestion_reader_timeout_secs(),
+            starting_checkpoint_number: None,
         }
     }
 }

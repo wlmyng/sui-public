@@ -12,7 +12,7 @@ use sui_types::base_types::{ObjectDigest, SequenceNumber};
 use sui_types::base_types::{ObjectID, SuiAddress};
 use sui_types::crypto::AggregateAuthoritySignature;
 use sui_types::digests::TransactionDigest;
-use sui_types::dynamic_field::DynamicFieldInfo;
+use sui_types::dynamic_field::DynamicFieldType;
 use sui_types::effects::TransactionEffects;
 use sui_types::event::SystemEpochInfoEvent;
 use sui_types::messages_checkpoint::{
@@ -284,14 +284,14 @@ pub struct IndexedObject {
     pub object: Object,
     pub coin_type: Option<String>,
     pub coin_balance: Option<u64>,
-    pub df_info: Option<DynamicFieldInfo>,
+    pub df_info: Option<DynamicFieldInfoShort>,
 }
 
 impl IndexedObject {
     pub fn from_object(
         checkpoint_sequence_number: u64,
         object: Object,
-        df_info: Option<DynamicFieldInfo>,
+        df_info: Option<DynamicFieldInfoShort>,
     ) -> Self {
         let (owner_type, owner_id) = owner_to_owner_info(&object.owner);
         let coin_type = object
@@ -316,6 +316,12 @@ impl IndexedObject {
             df_info,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct DynamicFieldInfoShort {
+    pub type_: DynamicFieldType,
+    pub object_id: ObjectID,
 }
 
 #[derive(Clone, Debug)]
