@@ -61,16 +61,20 @@ impl Indexer {
             env!("CARGO_PKG_VERSION")
         );
 
-        let watermark = if let Some(number) = CONFIG.indexer.starting_checkpoint_number {
-            number
-        } else {
+        // Start from the latest checkpoint number between the config and the last checkpoint
+        // persisted in the Db.
+        let watermark = std::cmp::max(
+            CONFIG
+                .indexer
+                .starting_checkpoint_number
+                .unwrap_or_default(),
             store
                 .get_latest_checkpoint_sequence_number()
                 .await
                 .expect("Failed to get latest tx checkpoint sequence number from DB")
                 .map(|seq| seq + 1)
-                .unwrap_or_default()
-        };
+                .unwrap_or_default(),
+        );
 
         let download_queue_size = CONFIG.indexer.download_queue_size();
         let ingestion_reader_timeout_secs = CONFIG.indexer.ingestion_reader_timeout_secs();
