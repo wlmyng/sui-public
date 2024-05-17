@@ -219,31 +219,60 @@ impl From<StoredDeletedObject> for StoredDeletedHistoryObject {
 }
 
 impl From<IndexedObject> for StoredObject {
-    fn from(o: IndexedObject) -> Self {
+    fn from(
+        IndexedObject {
+            object_id,
+            object_version,
+            object_digest,
+            checkpoint_sequence_number,
+            owner_type,
+            owner_id,
+            object,
+            coin_type,
+            coin_balance,
+            df_info,
+        }: IndexedObject,
+    ) -> Self {
+        let (df_kind, df_name, df_object_type, df_object_id) = if let Some(DynamicFieldInfo {
+            name,
+            type_,
+            object_type,
+            object_id,
+            ..
+        }) = df_info
+        {
+            (
+                Some(match type_ {
+                    DynamicFieldType::DynamicField => 0,
+                    DynamicFieldType::DynamicObject => 1,
+                }),
+                Some(bcs::to_bytes(&name).unwrap()),
+                Some(object_type),
+                Some(object_id.to_vec()),
+            )
+        } else {
+            (None, None, None, None)
+        };
         Self {
-            object_id: o.object_id.to_vec(),
-            object_version: o.object_version as i64,
-            object_digest: o.object_digest.into_inner().to_vec(),
-            checkpoint_sequence_number: o.checkpoint_sequence_number as i64,
-            owner_type: o.owner_type as i16,
-            owner_id: o.owner_id.map(|id| id.to_vec()),
-            object_type: o
-                .object
+            object_id: object_id.to_vec(),
+            object_version: object_version as i64,
+            object_digest: object_digest.into_inner().to_vec(),
+            checkpoint_sequence_number: checkpoint_sequence_number as i64,
+            owner_type: owner_type as i16,
+            owner_id: owner_id.map(|id| id.to_vec()),
+            object_type: object
                 .type_()
                 .map(|t| t.to_canonical_string(/* with_prefix */ true)),
-            object_type_package: o.object.type_().map(|t| t.address().to_vec()),
-            object_type_module: o.object.type_().map(|t| t.module().to_string()),
-            object_type_name: o.object.type_().map(|t| t.name().to_string()),
-            serialized_object: bcs::to_bytes(&o.object).unwrap(),
-            coin_type: o.coin_type,
-            coin_balance: o.coin_balance.map(|b| b as i64),
-            df_kind: o.df_info.as_ref().map(|k| match k.type_ {
-                DynamicFieldType::DynamicField => 0,
-                DynamicFieldType::DynamicObject => 1,
-            }),
-            df_name: o.df_info.as_ref().map(|n| bcs::to_bytes(&n.name).unwrap()),
-            df_object_type: o.df_info.as_ref().map(|v| v.object_type.clone()),
-            df_object_id: o.df_info.as_ref().map(|v| v.object_id.to_vec()),
+            object_type_package: object.type_().map(|t| t.address().to_vec()),
+            object_type_module: object.type_().map(|t| t.module().to_string()),
+            object_type_name: object.type_().map(|t| t.name().to_string()),
+            serialized_object: bcs::to_bytes(&object).unwrap(),
+            coin_type,
+            coin_balance: coin_balance.map(|b| b as i64),
+            df_kind,
+            df_name,
+            df_object_type,
+            df_object_id,
         }
     }
 }
