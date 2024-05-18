@@ -143,14 +143,28 @@ impl Indexer {
         store: S,
         metrics: IndexerMetrics,
     ) -> Result<(), IndexerError> {
-        let checkpoint_data = request_checkpoint_data(sequence_numbers).await?;
-        for checkpoint in checkpoint_data {
+        let object_store = create_remote_store_client(
+            CONFIG
+                .indexer
+                .remote_store_url
+                .clone()
+                .expect("remote-store-url not set"),
+            vec![],
+            CONFIG.indexer.ingestion_reader_timeout_secs(),
+        )
+        .expect("failed to create remote store client");
+
+        let deduped_and_ordered = BTreeSet::from_iter(sequence_numbers);
+        for sequence_number in deduped_and_ordered {
+            let (checkpoint, _size) =
+                remote_fetch_checkpoint(&object_store, sequence_number).await?;
             let data = CheckpointHandler::data_to_commit(checkpoint, store.clone(), &metrics, None)
                 .await?;
+            let epoch = data.epoch.clone();
             crate::handlers::committer::commit_checkpoints(
                 &store,
                 vec![data],
-                None, // HACK: trying to avoid pruning for now as that is done in epoch boundaries
+                epoch,
                 &metrics,
                 false, // object_snapshot_backfill_mode
             )
@@ -178,29 +192,6 @@ impl Indexer {
 
         Ok(())
     }
-}
-
-pub(crate) async fn request_checkpoint_data(
-    sequence_numbers: Vec<u64>,
-) -> Result<Vec<CheckpointData>, IndexerError> {
-    let object_store = create_remote_store_client(
-        CONFIG
-            .indexer
-            .remote_store_url
-            .clone()
-            .expect("remote-store-url not set"),
-        vec![],
-        CONFIG.indexer.ingestion_reader_timeout_secs(),
-    )
-    .expect("failed to create remote store client");
-
-    let deduped_and_ordered = BTreeSet::from_iter(sequence_numbers);
-    let mut checkpoints = vec![];
-    for sequence_number in deduped_and_ordered {
-        let (checkpoint, _size) = remote_fetch_checkpoint(&object_store, sequence_number).await?;
-        checkpoints.push(checkpoint);
-    }
-    Ok(checkpoints)
 }
 
 pub(crate) async fn remote_fetch_checkpoint(

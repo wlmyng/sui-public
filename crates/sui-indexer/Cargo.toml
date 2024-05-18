@@ -88,7 +88,3 @@ simulacrum.workspace = true
 [[bin]]
 name = "sui-indexer"
 path = "src/main.rs"
-
-[[bin]]
-name = "sui-index"
-path = "src/bin/checkpoints.rs"

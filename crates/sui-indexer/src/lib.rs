@@ -299,12 +299,6 @@ pub struct IndexerConfig {
     pub rpc_server_url: String,
     #[serde(default = "default_rpc_server_port")]
     pub rpc_server_port: u16,
-    #[serde(default)]
-    pub reset_db: bool,
-    #[serde(default)]
-    pub fullnode_sync_worker: bool,
-    #[serde(default)]
-    pub rpc_server_worker: bool,
     pub data_ingestion_path: Option<PathBuf>,
     pub name_service_package_address: Option<SuiAddress>,
     pub name_service_registry_id: Option<ObjectID>,
@@ -369,9 +363,6 @@ impl Default for IndexerConfig {
             client_metric_port: default_client_metric_port(),
             rpc_server_url: default_rpc_server_url(),
             rpc_server_port: default_rpc_server_port(),
-            reset_db: false,
-            fullnode_sync_worker: false,
-            rpc_server_worker: false,
             data_ingestion_path: None,
             name_service_package_address: None,
             name_service_registry_id: None,

@@ -83,9 +83,9 @@ pub async fn start_test_indexer_impl<T: R2D2Connection>(
     let mut config = IndexerConfig {
         db_url: Some(db_url.clone().into()),
         rpc_client_url: rpc_url,
-        reset_db: true,
-        fullnode_sync_worker: true,
-        rpc_server_worker: false,
+        // reset_db: true,
+        // fullnode_sync_worker: true,
+        // rpc_server_worker: false,
         remote_store_url: None,
         data_ingestion_path,
         ..Default::default()
@@ -134,8 +134,8 @@ pub async fn start_test_indexer_impl<T: R2D2Connection>(
             let reader_mode_rpc_url = reader_mode_rpc_url
                 .parse::<SocketAddr>()
                 .expect("Unable to parse fullnode address");
-            config.fullnode_sync_worker = false;
-            config.rpc_server_worker = true;
+            // config.fullnode_sync_worker = false;
+            // config.rpc_server_worker = true;
             config.rpc_server_url = reader_mode_rpc_url.ip().to_string();
             config.rpc_server_port = reader_mode_rpc_url.port();
             tokio::spawn(
@@ -143,9 +143,9 @@ pub async fn start_test_indexer_impl<T: R2D2Connection>(
             )
         }
         ReaderWriterConfig::Writer { snapshot_config } => {
-            if config.reset_db {
-                crate::db::reset_database(&mut blocking_pool.get().unwrap(), true).unwrap();
-            }
+            // if config.reset_db {
+            //     crate::db::reset_database(&mut blocking_pool.get().unwrap(), true).unwrap();
+            // }
             let store_clone = store.clone();
 
             tokio::spawn(async move {
