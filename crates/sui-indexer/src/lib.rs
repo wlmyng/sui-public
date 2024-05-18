@@ -6,12 +6,11 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use clap::Parser;
 use diesel::r2d2::R2D2Connection;
 use jsonrpsee::http_client::{HeaderMap, HeaderValue, HttpClient, HttpClientBuilder};
 use metrics::IndexerMetrics;
 use mysten_metrics::spawn_monitored_task;
-use once_cell::sync::Lazy;
+use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
@@ -51,50 +50,25 @@ pub mod system_package_task;
 pub mod test_utils;
 pub mod types;
 
-pub static CONFIG: Lazy<Config> = Lazy::new(|| {
-    let CliArgs {
-        mut config,
-        db_url,
-        db_user_name,
-        db_password,
-        db_host,
-        db_port,
-        db_name,
-    } = CliArgs::parse();
+pub static CONFIG: OnceConfig = OnceConfig::new();
 
-    config.indexer.db_url = db_url;
-    config.indexer.db_user_name = db_user_name;
-    config.indexer.db_password = db_password;
-    config.indexer.db_host = db_host;
-    config.indexer.db_port = db_port;
-    config.indexer.db_name = db_name;
+pub struct OnceConfig(OnceCell<Config>);
 
-    config
-});
+impl OnceConfig {
+    pub const fn new() -> Self {
+        Self(OnceCell::new())
+    }
 
-#[derive(Parser, Clone, Debug)]
-#[clap(
-    name = "Sui indexer",
-    about = "An off-fullnode service serving data from Sui protocol",
-    rename_all = "kebab-case"
-)]
-pub struct CliArgs {
-    /// Path to the TOML configuration file.
-    #[arg(long)]
-    pub config: Config,
+    pub fn set(&self, config: Config) {
+        self.0.set(config).expect("Config already initialized")
+    }
+}
 
-    #[clap(long)]
-    pub db_url: Option<Secret<String>>,
-    #[clap(long)]
-    pub db_user_name: Option<String>,
-    #[clap(long)]
-    pub db_password: Option<Secret<String>>,
-    #[clap(long)]
-    pub db_host: Option<String>,
-    #[clap(long)]
-    pub db_port: Option<u16>,
-    #[clap(long)]
-    pub db_name: Option<String>,
+impl std::ops::Deref for OnceConfig {
+    type Target = Config;
+    fn deref(&self) -> &Self::Target {
+        self.0.get().expect("Config not initialized")
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
