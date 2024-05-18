@@ -102,14 +102,11 @@ where
     S: IndexerStore + Clone + Sync + Send + 'static,
 {
     async fn process_checkpoint(&self, checkpoint: CheckpointData) -> anyhow::Result<()> {
-        let checkpoint = self.filter_transactions(checkpoint);
-        let mut checkpoints = vec![checkpoint];
-        let index_packages = Self::index_packages(&checkpoints, &self.metrics);
-        let checkpoint_data = Self::index_checkpoint(
-            self.state.clone().into(),
-            checkpoints.pop().unwrap(),
-            Arc::new(self.metrics.clone()),
-            index_packages,
+        let checkpoint_data = Self::data_to_commit(
+            checkpoint,
+            self.state.clone(),
+            &self.metrics,
+            self.filter_packages.as_ref().map(|v| v.as_ref()),
         )
         .await?;
         self.indexed_checkpoint_sender.send(checkpoint_data).await?;
@@ -148,6 +145,27 @@ where
             filter_packages: CONFIG.checkpoint_handler.filter_packages.clone(),
             indexed_checkpoint_sender,
         }
+    }
+
+    pub(crate) async fn data_to_commit(
+        checkpoint: CheckpointData,
+        state: S,
+        metrics: &IndexerMetrics,
+        filter: Option<&[ObjectID]>,
+    ) -> Result<CheckpointDataToCommit, IndexerError> {
+        let checkpoint = if let Some(filter) = filter {
+            Self::filter_transactions(checkpoint, filter)
+        } else {
+            checkpoint
+        };
+        let index_packages = Self::index_packages(&checkpoint, metrics);
+        Self::index_checkpoint(
+            state.into(),
+            checkpoint,
+            Arc::new(metrics.clone()),
+            index_packages,
+        )
+        .await
     }
 
     #[tracing::instrument(skip_all)]
@@ -229,7 +247,7 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn index_checkpoint(
+    pub(crate) async fn index_checkpoint(
         state: Arc<S>,
         data: CheckpointData,
         metrics: Arc<IndexerMetrics>,
@@ -596,24 +614,17 @@ where
 
     #[tracing::instrument(skip_all)]
     fn filter_transactions(
-        &self,
         CheckpointData {
             checkpoint_summary,
             checkpoint_contents,
             transactions,
         }: CheckpointData,
+        filter_packages: &[ObjectID],
     ) -> CheckpointData {
-        let Some(filter) = &self.filter_packages else {
-            return CheckpointData {
-                checkpoint_summary,
-                checkpoint_contents,
-                transactions,
-            };
-        };
         let ((digests, sigs), transactions): ((Vec<_>, _), _) = checkpoint_contents
             .into_iter_with_signatures()
             .zip(transactions)
-            .filter(|d| Self::keep_transaction(filter, d))
+            .filter(|d| Self::keep_transaction(filter_packages, d))
             .unzip();
         let checkpoint_contents =
             CheckpointContents::new_with_digests_and_signatures(digests, sigs);
@@ -663,29 +674,25 @@ where
         object_pkg == pkg_id
     }
 
-    fn index_packages(
-        checkpoint_data: &[CheckpointData],
+    pub(crate) fn index_packages(
+        checkpoint_data: &CheckpointData,
         metrics: &IndexerMetrics,
     ) -> Vec<IndexedPackage> {
         let _timer = metrics.indexing_packages_latency.start_timer();
+        let checkpoint_sequence_number = checkpoint_data.checkpoint_summary.sequence_number;
         checkpoint_data
+            .output_objects()
             .iter()
-            .flat_map(|data| {
-                let checkpoint_sequence_number = data.checkpoint_summary.sequence_number;
-                data.output_objects()
-                    .iter()
-                    .filter_map(|o| {
-                        if let sui_types::object::Data::Package(p) = &o.data {
-                            Some(IndexedPackage {
-                                package_id: o.id(),
-                                move_package: p.clone(),
-                                checkpoint_sequence_number,
-                            })
-                        } else {
-                            None
-                        }
+            .filter_map(|o| {
+                if let sui_types::object::Data::Package(p) = &o.data {
+                    Some(IndexedPackage {
+                        package_id: o.id(),
+                        move_package: p.clone(),
+                        checkpoint_sequence_number,
                     })
-                    .collect::<Vec<_>>()
+                } else {
+                    None
+                }
             })
             .collect()
     }

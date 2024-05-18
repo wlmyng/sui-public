@@ -22,6 +22,7 @@ diesel-derive-enum = { workspace = true, optional = true }
 futures.workspace = true
 itertools.workspace = true
 jsonrpsee.workspace = true
+object_store.workspace = true
 prometheus.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -44,6 +45,7 @@ sui-json-rpc-api.workspace = true
 sui-json-rpc-types.workspace = true
 sui-open-rpc.workspace = true
 sui-sdk.workspace = true
+sui-storage.workspace = true
 sui-types.workspace = true
 sui-package-resolver.workspace = true
 sui-protocol-config.workspace = true
@@ -86,3 +88,7 @@ simulacrum.workspace = true
 [[bin]]
 name = "sui-indexer"
 path = "src/main.rs"
+
+[[bin]]
+name = "sui-index"
+path = "src/bin/checkpoints.rs"

@@ -314,6 +314,55 @@ pub mod setup_postgres {
         }
         Ok(())
     }
+
+    pub async fn index_checkpoints(
+        registry: Registry,
+        sequence_numbers: Vec<u64>,
+    ) -> Result<(), IndexerError> {
+        let indexer_config = &CONFIG.indexer;
+        let db_url_secret = indexer_config.get_db_url().map_err(|e| {
+            IndexerError::PgPoolConnectionError(format!(
+                "Failed parsing database url with error {:?}",
+                e
+            ))
+        })?;
+        let db_url = db_url_secret.expose_secret();
+        let blocking_cp = new_connection_pool::<PgConnection>(db_url, None).map_err(|e| {
+            error!(
+                "Failed creating Postgres connection pool with error {:?}",
+                e
+            );
+            e
+        })?;
+        let indexer_metrics = IndexerMetrics::new(&registry);
+        mysten_metrics::init_metrics(&registry);
+
+        let report_cp = blocking_cp.clone();
+        let report_metrics = indexer_metrics.clone();
+        tokio::spawn(async move {
+            loop {
+                let cp_state = report_cp.state();
+                info!(
+                    "DB connection pool size: {}, with idle conn: {}.",
+                    cp_state.connections, cp_state.idle_connections
+                );
+                report_metrics
+                    .db_conn_pool_size
+                    .set(cp_state.connections as i64);
+                report_metrics
+                    .idle_db_conn
+                    .set(cp_state.idle_connections as i64);
+                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            }
+        });
+        let store = PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone());
+        Indexer::index_checkpoints::<PgIndexerStore<PgConnection>, PgConnection>(
+            sequence_numbers,
+            store,
+            indexer_metrics,
+        )
+        .await
+    }
 }
 
 #[cfg(feature = "mysql-feature")]

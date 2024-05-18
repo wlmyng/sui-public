@@ -1,23 +1,29 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeSet;
 use std::env;
+use std::time::Duration;
 
 use anyhow::Result;
+use backoff::backoff::Backoff as _;
 use diesel::r2d2::R2D2Connection;
 use prometheus::Registry;
+use sui_rest_api::CheckpointData;
+use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use mysten_metrics::spawn_monitored_task;
 use sui_data_ingestion_core::{
-    DataIngestionMetrics, IndexerExecutor, ReaderOptions, ShimProgressStore, WorkerPool,
+    create_remote_store_client, DataIngestionMetrics, IndexerExecutor, ReaderOptions,
+    ShimProgressStore, WorkerPool,
 };
 
 use crate::build_json_rpc_server;
 use crate::errors::IndexerError;
-use crate::handlers::checkpoint_handler::new_handlers;
+use crate::handlers::checkpoint_handler::{new_handlers, CheckpointHandler};
 use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, SnapshotLagConfig};
 use crate::indexer_reader::IndexerReader;
 use crate::metrics::IndexerMetrics;
@@ -129,6 +135,30 @@ impl Indexer {
         Ok(())
     }
 
+    pub async fn index_checkpoints<
+        S: IndexerStore + Sync + Send + Clone + 'static,
+        T: R2D2Connection + 'static,
+    >(
+        sequence_numbers: Vec<u64>,
+        store: S,
+        metrics: IndexerMetrics,
+    ) -> Result<(), IndexerError> {
+        let checkpoint_data = request_checkpoint_data(sequence_numbers).await?;
+        for checkpoint in checkpoint_data {
+            let data = CheckpointHandler::data_to_commit(checkpoint, store.clone(), &metrics, None)
+                .await?;
+            crate::handlers::committer::commit_checkpoints(
+                &store,
+                vec![data],
+                None, // HACK: trying to avoid pruning for now as that is done in epoch boundaries
+                &metrics,
+                false, // object_snapshot_backfill_mode
+            )
+            .await;
+        }
+        Ok(())
+    }
+
     pub async fn start_reader<T: R2D2Connection + 'static>(
         config: &IndexerConfig,
         registry: &Registry,
@@ -148,4 +178,69 @@ impl Indexer {
 
         Ok(())
     }
+}
+
+pub(crate) async fn request_checkpoint_data(
+    sequence_numbers: Vec<u64>,
+) -> Result<Vec<CheckpointData>, IndexerError> {
+    let object_store = create_remote_store_client(
+        CONFIG
+            .indexer
+            .remote_store_url
+            .clone()
+            .expect("remote-store-url not set"),
+        vec![],
+        CONFIG.indexer.ingestion_reader_timeout_secs(),
+    )
+    .expect("failed to create remote store client");
+
+    let deduped_and_ordered = BTreeSet::from_iter(sequence_numbers);
+    let mut checkpoints = vec![];
+    for sequence_number in deduped_and_ordered {
+        let (checkpoint, _size) = remote_fetch_checkpoint(&object_store, sequence_number).await?;
+        checkpoints.push(checkpoint);
+    }
+    Ok(checkpoints)
+}
+
+pub(crate) async fn remote_fetch_checkpoint(
+    store: &impl object_store::ObjectStore,
+    checkpoint_number: CheckpointSequenceNumber,
+) -> Result<(CheckpointData, usize)> {
+    let mut backoff = backoff::ExponentialBackoff::default();
+    backoff.max_elapsed_time = Some(Duration::from_secs(60));
+    backoff.initial_interval = Duration::from_millis(100);
+    backoff.current_interval = backoff.initial_interval;
+    backoff.multiplier = 1.0;
+    loop {
+        match remote_fetch_checkpoint_internal(store, checkpoint_number).await {
+            Ok(data) => return Ok(data),
+            Err(err) => match backoff.next_backoff() {
+                Some(duration) => {
+                    if !err.to_string().contains("404") {
+                        tracing::debug!(
+                            "remote reader retry in {} ms. Error is {:?}",
+                            duration.as_millis(),
+                            err
+                        );
+                    }
+                    tokio::time::sleep(duration).await
+                }
+                None => return Err(err),
+            },
+        }
+    }
+}
+
+pub(crate) async fn remote_fetch_checkpoint_internal(
+    store: &impl object_store::ObjectStore,
+    checkpoint_number: CheckpointSequenceNumber,
+) -> Result<(CheckpointData, usize)> {
+    let path = object_store::path::Path::from(format!("{}.chk", checkpoint_number));
+    let response = store.get(&path).await?;
+    let bytes = response.bytes().await?;
+    Ok((
+        sui_storage::blob::Blob::from_bytes::<CheckpointData>(&bytes)?,
+        bytes.len(),
+    ))
 }

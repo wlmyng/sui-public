@@ -99,7 +99,7 @@ pub async fn start_tx_checkpoint_commit_task<S>(
     first = indexed_checkpoint_batch.first().as_ref().unwrap().checkpoint.sequence_number,
     last = indexed_checkpoint_batch.last().as_ref().unwrap().checkpoint.sequence_number
 ))]
-async fn commit_checkpoints<S>(
+pub(crate) async fn commit_checkpoints<S>(
     state: &S,
     indexed_checkpoint_batch: Vec<CheckpointDataToCommit>,
     epoch: Option<EpochToCommit>,
