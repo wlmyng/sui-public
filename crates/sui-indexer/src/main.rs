@@ -84,8 +84,8 @@ async fn main() -> Result<(), IndexerError> {
         .init();
     let command = CliArgs::init();
 
+    info!("Parsed config: {:#?}", *CONFIG);
     let indexer_config = &CONFIG.indexer;
-    info!("Parsed indexer config: {:#?}", indexer_config);
     let (_registry_service, registry) = start_prometheus_server(
         // NOTE: this parses the input host addr and port number for socket addr,
         // so unwrap() is safe here.
