@@ -10,15 +10,7 @@ use crate::types::IndexerResult;
 use crate::CONFIG;
 use crate::{metrics::IndexerMetrics, store::IndexerStore};
 
-pub struct ObjectsSnapshotProcessor<S> {
-    pub client: Client,
-    pub store: S,
-    metrics: IndexerMetrics,
-    pub config: SnapshotLagConfig,
-    cancel: CancellationToken,
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SnapshotLagConfig {
     pub snapshot_min_lag: usize,
     pub snapshot_max_lag: usize,
@@ -42,8 +34,8 @@ impl SnapshotLagConfig {
 
 impl Default for SnapshotLagConfig {
     fn default() -> Self {
-        let snapshot_min_lag = CONFIG.object_snapshot.objects_snapshot_max_checkpoint_lag();
-        let snapshot_max_lag = CONFIG.object_snapshot.objects_snapshot_min_checkpoint_lag();
+        let snapshot_min_lag = CONFIG.object_snapshot.objects_snapshot_min_checkpoint_lag();
+        let snapshot_max_lag = CONFIG.object_snapshot.objects_snapshot_max_checkpoint_lag();
 
         SnapshotLagConfig {
             snapshot_min_lag,
@@ -53,11 +45,20 @@ impl Default for SnapshotLagConfig {
     }
 }
 
+pub struct ObjectsSnapshotProcessor<S> {
+    pub client: Client,
+    pub store: S,
+    metrics: IndexerMetrics,
+    pub config: SnapshotLagConfig,
+    cancel: CancellationToken,
+}
+
 // NOTE: "handler"
 impl<S> ObjectsSnapshotProcessor<S>
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
 {
+    #[tracing::instrument(skip_all)]
     pub fn new_with_config(
         client: Client,
         store: S,
@@ -65,6 +66,7 @@ where
         config: SnapshotLagConfig,
         cancel: CancellationToken,
     ) -> ObjectsSnapshotProcessor<S> {
+        tracing::info!("Using config {config:?}");
         Self {
             client,
             store,
