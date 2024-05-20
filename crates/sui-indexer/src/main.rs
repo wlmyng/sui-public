@@ -48,12 +48,12 @@ impl CliArgs {
             db_name,
         } = Self::parse();
 
-        config.indexer.db_url = db_url;
-        config.indexer.db_user_name = db_user_name;
-        config.indexer.db_password = db_password;
-        config.indexer.db_host = db_host;
-        config.indexer.db_port = db_port;
-        config.indexer.db_name = db_name;
+        config.database.db_url = db_url;
+        config.database.db_user_name = db_user_name;
+        config.database.db_password = db_password;
+        config.database.db_host = db_host;
+        config.database.db_port = db_port;
+        config.database.db_name = db_name;
         CONFIG.set(config);
         command
     }
@@ -85,17 +85,16 @@ async fn main() -> Result<(), IndexerError> {
     let command = CliArgs::init();
 
     info!("Parsed config: {:#?}", *CONFIG);
-    let indexer_config = &CONFIG.indexer;
     let (_registry_service, registry) = start_prometheus_server(
         // NOTE: this parses the input host addr and port number for socket addr,
         // so unwrap() is safe here.
         format!(
             "{}:{}",
-            indexer_config.client_metric_host, indexer_config.client_metric_port
+            &CONFIG.client_metric_host, &CONFIG.client_metric_port
         )
         .parse()
         .unwrap(),
-        indexer_config.rpc_client_url.as_str(),
+        &CONFIG.rpc_client_url.as_str(),
     )?;
 
     match command {

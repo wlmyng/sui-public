@@ -222,16 +222,16 @@ pub mod setup_postgres {
 
         let store = PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone());
         Indexer::start_writer::<PgIndexerStore<PgConnection>, PgConnection>(
-            &CONFIG.indexer,
             store,
             indexer_metrics,
+            &CONFIG,
         )
         .await
     }
 
     pub async fn rpc_server_worker(registry: Registry) -> Result<(), IndexerError> {
         let db_url = get_db_url()?.expose_secret().clone();
-        Indexer::start_reader::<PgConnection>(&CONFIG.indexer, &registry, db_url).await
+        Indexer::start_reader::<PgConnection>(&registry, db_url, &CONFIG).await
     }
 
     pub async fn index_checkpoints(
@@ -265,6 +265,7 @@ pub mod setup_postgres {
             sequence_numbers,
             store,
             indexer_metrics,
+            &CONFIG,
         )
         .await
     }
@@ -346,7 +347,7 @@ pub mod setup_postgres {
     }
 
     fn get_db_url() -> Result<secrecy::Secret<String>, IndexerError> {
-        CONFIG.indexer.get_db_url().map_err(|e| {
+        CONFIG.database.get_db_url().map_err(|e| {
             IndexerError::PgPoolConnectionError(format!(
                 "Failed parsing database url with error {:?}",
                 e

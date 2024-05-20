@@ -28,7 +28,7 @@ use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, Snap
 use crate::indexer_reader::IndexerReader;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
-use crate::{IndexerConfig, CONFIG};
+use crate::Config;
 
 pub struct Indexer;
 
@@ -37,17 +37,21 @@ impl Indexer {
         S: IndexerStore + Sync + Send + Clone + 'static,
         T: R2D2Connection + 'static,
     >(
-        config: &IndexerConfig,
         store: S,
         metrics: IndexerMetrics,
+        config: &Config,
     ) -> Result<(), IndexerError> {
-        let snapshot_config = SnapshotLagConfig::default();
+        let snapshot_config = SnapshotLagConfig::new(
+            config.object_snapshot.min_checkpoint_lag,
+            config.object_snapshot.max_checkpoint_lag,
+            None,
+        );
         Indexer::start_writer_with_config::<S, T>(
-            config,
             store,
             metrics,
             snapshot_config,
             CancellationToken::new(),
+            config,
         )
         .await
     }
@@ -56,11 +60,11 @@ impl Indexer {
         S: IndexerStore + Sync + Send + Clone + 'static,
         T: R2D2Connection + 'static,
     >(
-        config: &IndexerConfig,
         store: S,
         metrics: IndexerMetrics,
         snapshot_config: SnapshotLagConfig,
         cancel: CancellationToken,
+        config: &Config,
     ) -> Result<(), IndexerError> {
         info!(
             "Sui Indexer Writer (version {:?}) started...",
@@ -70,9 +74,9 @@ impl Indexer {
         // Start from the latest checkpoint number between the config and the last checkpoint
         // persisted in the Db.
         let watermark = std::cmp::max(
-            CONFIG
-                .indexer
-                .starting_checkpoint_number
+            config
+                .data_ingestion
+                .starting_checkpoint
                 .unwrap_or_default(),
             store
                 .get_latest_checkpoint_sequence_number()
@@ -81,10 +85,6 @@ impl Indexer {
                 .map(|seq| seq + 1)
                 .unwrap_or_default(),
         );
-
-        let download_queue_size = CONFIG.indexer.download_queue_size();
-        let ingestion_reader_timeout_secs = CONFIG.indexer.ingestion_reader_timeout_secs();
-        let data_limit = CONFIG.runner.checkpoint_processing_batch_data_limit();
 
         let rest_client = sui_rest_api::Client::new(format!("{}/rest", config.rpc_client_url));
 
@@ -112,21 +112,26 @@ impl Indexer {
         );
         let worker =
             new_handlers::<S>(store, rest_client, metrics, watermark, cancel.clone()).await?;
-        let worker_pool = WorkerPool::new(worker, "workflow".to_string(), download_queue_size);
+        let worker_pool = WorkerPool::new(
+            worker,
+            "workflow".to_string(),
+            config.data_ingestion.batch_size,
+        );
         let extra_reader_options = ReaderOptions {
-            batch_size: download_queue_size,
-            timeout_secs: ingestion_reader_timeout_secs,
-            data_limit,
+            batch_size: config.data_ingestion.batch_size,
+            timeout_secs: config.data_ingestion.timeout_secs,
+            data_limit: config.data_ingestion.data_limit,
             ..Default::default()
         };
         executor.register(worker_pool).await?;
         executor
             .run(
                 config
-                    .data_ingestion_path
+                    .data_ingestion
+                    .path
                     .clone()
                     .unwrap_or(tempfile::tempdir().unwrap().into_path()),
-                config.remote_store_url.clone(),
+                config.data_ingestion.remote_store_url.clone(),
                 vec![],
                 extra_reader_options,
                 exit_receiver,
@@ -142,15 +147,16 @@ impl Indexer {
         sequence_numbers: Vec<u64>,
         store: S,
         metrics: IndexerMetrics,
+        config: &Config,
     ) -> Result<(), IndexerError> {
         let object_store = create_remote_store_client(
-            CONFIG
-                .indexer
+            config
+                .data_ingestion
                 .remote_store_url
                 .clone()
                 .expect("remote-store-url not set"),
             vec![],
-            CONFIG.indexer.ingestion_reader_timeout_secs(),
+            config.data_ingestion.timeout_secs,
         )
         .expect("failed to create remote store client");
 
@@ -174,9 +180,9 @@ impl Indexer {
     }
 
     pub async fn start_reader<T: R2D2Connection + 'static>(
-        config: &IndexerConfig,
         registry: &Registry,
         db_url: String,
+        config: &Config,
     ) -> Result<(), IndexerError> {
         info!(
             "Sui Indexer Reader (version {:?}) started...",

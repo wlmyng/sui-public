@@ -134,11 +134,9 @@ impl<T: R2D2Connection> Clone for PgIndexerStore<T> {
 
 impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
     pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics) -> Self {
-        let parallel_chunk_size = CONFIG.postgres_store.pg_commit_parallel_chunk_size();
-        let parallel_objects_chunk_size = CONFIG
-            .postgres_store
-            .pg_commit_objects_parallel_chunk_size();
-        let epochs_to_keep = CONFIG.postgres_store.epochs_to_keep();
+        let parallel_chunk_size = CONFIG.postgres_store.commit_parallel_chunk_size;
+        let parallel_objects_chunk_size = CONFIG.postgres_store.commit_objects_parallel_chunk_size;
+        let epochs_to_keep = CONFIG.postgres_store.epochs_to_keep;
 
         let partition_manager = PgPartitionManager::new(blocking_cp.clone())
             .expect("Failed to initialize partition manager");
@@ -1176,7 +1174,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         &self,
         object_changes: Vec<TransactionObjectChangesToCommit>,
     ) -> Result<(), IndexerError> {
-        let skip_history = CONFIG.postgres_store.skip_object_history();
+        let skip_history = CONFIG.postgres_store.skip_object_history;
         if skip_history {
             info!("skipping object history");
             return Ok(());
@@ -1227,7 +1225,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         start_cp: u64,
         end_cp: u64,
     ) -> Result<(), IndexerError> {
-        let skip_snapshot = CONFIG.postgres_store.skip_object_snapshot();
+        let skip_snapshot = CONFIG.postgres_store.skip_object_snapshot;
         if skip_snapshot {
             info!("skipping object snapshot");
             return Ok(());

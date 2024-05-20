@@ -7,7 +7,6 @@ use tracing::info;
 use sui_rest_api::Client;
 
 use crate::types::IndexerResult;
-use crate::CONFIG;
 use crate::{metrics::IndexerMetrics, store::IndexerStore};
 
 #[derive(Clone, Debug)]
@@ -18,29 +17,17 @@ pub struct SnapshotLagConfig {
 }
 
 impl SnapshotLagConfig {
+    pub const DEFAULT_SLEEP_DURATION: u64 = 5;
+
     pub fn new(
-        min_lag: Option<usize>,
-        max_lag: Option<usize>,
+        snapshot_min_lag: usize,
+        snapshot_max_lag: usize,
         sleep_duration: Option<u64>,
     ) -> Self {
-        let default_config = Self::default();
         Self {
-            snapshot_min_lag: min_lag.unwrap_or(default_config.snapshot_min_lag),
-            snapshot_max_lag: max_lag.unwrap_or(default_config.snapshot_max_lag),
-            sleep_duration: sleep_duration.unwrap_or(default_config.sleep_duration),
-        }
-    }
-}
-
-impl Default for SnapshotLagConfig {
-    fn default() -> Self {
-        let snapshot_min_lag = CONFIG.object_snapshot.objects_snapshot_min_checkpoint_lag();
-        let snapshot_max_lag = CONFIG.object_snapshot.objects_snapshot_max_checkpoint_lag();
-
-        SnapshotLagConfig {
             snapshot_min_lag,
             snapshot_max_lag,
-            sleep_duration: 5,
+            sleep_duration: sleep_duration.unwrap_or(Self::DEFAULT_SLEEP_DURATION),
         }
     }
 }

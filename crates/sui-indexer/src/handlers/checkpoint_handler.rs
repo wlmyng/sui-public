@@ -61,7 +61,7 @@ pub async fn new_handlers<S>(
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
 {
-    let checkpoint_queue_size = CONFIG.checkpoint_handler.checkpoint_queue_size();
+    let checkpoint_queue_size = CONFIG.checkpoint_handler.queue_size;
     let global_metrics = get_metrics().unwrap();
     let (indexed_checkpoint_sender, indexed_checkpoint_receiver) =
         mysten_metrics::metered_channel::channel(
