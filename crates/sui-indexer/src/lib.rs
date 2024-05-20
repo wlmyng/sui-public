@@ -35,7 +35,6 @@ use errors::IndexerError;
 
 pub mod apis;
 pub mod db;
-pub mod environment;
 pub mod errors;
 pub mod handlers;
 pub mod indexer;
@@ -103,14 +102,6 @@ impl std::str::FromStr for Config {
         let toml_str = std::fs::read_to_string(s)?;
         Ok(toml::from_str(&toml_str)?)
     }
-}
-
-macro_rules! get_with_env_override {
-    ($($attr:ident = $ENV:ident -> $ty:ty;)*) => ($(
-        pub fn $attr(&self) -> $ty {
-            environment::$ENV.unwrap_or(self.$attr)
-        }
-    )*)
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -184,9 +175,9 @@ pub struct DbConfig {
     #[serde(default, skip)]
     pub db_name: Option<String>,
 
-    db_pool_size: u32,
-    db_connection_timeout: u64,
-    db_statement_timeout: u64,
+    pub(crate) db_pool_size: u32,
+    pub(crate) db_connection_timeout: u64,
+    pub(crate) db_statement_timeout: u64,
 }
 
 impl Default for DbConfig {
@@ -206,12 +197,6 @@ impl Default for DbConfig {
 }
 
 impl DbConfig {
-    get_with_env_override! {
-        db_pool_size = DB_POOL_SIZE -> u32;
-        db_connection_timeout = DB_CONNECTION_TIMEOUT -> u64;
-        db_statement_timeout = DB_STATEMENT_TIMEOUT -> u64;
-    }
-
     /// returns connection url without the db name
     pub fn base_connection_url(&self) -> anyhow::Result<String> {
         let url_secret = self.get_db_url()?;

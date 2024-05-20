@@ -45,9 +45,9 @@ impl ConnectionPoolConfig {
 
 impl Default for ConnectionPoolConfig {
     fn default() -> Self {
-        let db_pool_size = CONFIG.database.db_pool_size();
-        let conn_timeout_secs = CONFIG.database.db_connection_timeout();
-        let statement_timeout_secs = CONFIG.database.db_statement_timeout();
+        let db_pool_size = CONFIG.database.db_pool_size;
+        let conn_timeout_secs = CONFIG.database.db_connection_timeout;
+        let statement_timeout_secs = CONFIG.database.db_statement_timeout;
 
         Self {
             pool_size: db_pool_size,
