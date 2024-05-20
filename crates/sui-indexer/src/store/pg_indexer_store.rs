@@ -43,7 +43,7 @@ use crate::schema::{
     tx_senders,
 };
 use crate::types::{IndexedCheckpoint, IndexedEvent, IndexedPackage, IndexedTransaction, TxIndex};
-use crate::CONFIG;
+use crate::Config;
 use crate::{
     insert_or_ignore_into, on_conflict_do_update, read_only_blocking,
     transactional_blocking_with_retry,
@@ -112,6 +112,8 @@ pub struct PgIndexerStoreConfig {
     pub parallel_chunk_size: usize,
     pub parallel_objects_chunk_size: usize,
     pub epochs_to_keep: Option<u64>,
+    pub skip_object_history: bool,
+    pub skip_object_snapshot: bool,
 }
 
 pub struct PgIndexerStore<T: R2D2Connection + 'static> {
@@ -133,10 +135,10 @@ impl<T: R2D2Connection> Clone for PgIndexerStore<T> {
 }
 
 impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
-    pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics) -> Self {
-        let parallel_chunk_size = CONFIG.postgres_store.commit_parallel_chunk_size;
-        let parallel_objects_chunk_size = CONFIG.postgres_store.commit_objects_parallel_chunk_size;
-        let epochs_to_keep = CONFIG.postgres_store.epochs_to_keep;
+    pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics, config: &Config) -> Self {
+        let parallel_chunk_size = config.postgres_store.commit_parallel_chunk_size;
+        let parallel_objects_chunk_size = config.postgres_store.commit_objects_parallel_chunk_size;
+        let epochs_to_keep = config.postgres_store.epochs_to_keep;
 
         let partition_manager = PgPartitionManager::new(blocking_cp.clone())
             .expect("Failed to initialize partition manager");
@@ -144,6 +146,8 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
             parallel_chunk_size,
             parallel_objects_chunk_size,
             epochs_to_keep,
+            skip_object_history: config.postgres_store.skip_object_history,
+            skip_object_snapshot: config.postgres_store.skip_object_snapshot,
         };
 
         Self {
@@ -1174,8 +1178,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         &self,
         object_changes: Vec<TransactionObjectChangesToCommit>,
     ) -> Result<(), IndexerError> {
-        let skip_history = CONFIG.postgres_store.skip_object_history;
-        if skip_history {
+        if self.config.skip_object_history {
             info!("skipping object history");
             return Ok(());
         }
@@ -1225,8 +1228,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         start_cp: u64,
         end_cp: u64,
     ) -> Result<(), IndexerError> {
-        let skip_snapshot = CONFIG.postgres_store.skip_object_snapshot;
-        if skip_snapshot {
+        if self.config.skip_object_snapshot {
             info!("skipping object snapshot");
             return Ok(());
         }

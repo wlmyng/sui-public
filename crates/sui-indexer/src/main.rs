@@ -6,7 +6,7 @@ use tracing::info;
 
 use sui_indexer::errors::IndexerError;
 use sui_indexer::metrics::start_prometheus_server;
-use sui_indexer::{Config, CONFIG};
+use sui_indexer::Config;
 
 #[derive(Parser)]
 #[clap(
@@ -36,7 +36,7 @@ pub struct CliArgs {
 }
 
 impl CliArgs {
-    fn init() -> Cmd {
+    fn init() -> (Cmd, Config) {
         let Self {
             command,
             mut config,
@@ -54,8 +54,7 @@ impl CliArgs {
         config.database.db_host = db_host;
         config.database.db_port = db_port;
         config.database.db_name = db_name;
-        CONFIG.set(config);
-        command
+        (command, config)
     }
 }
 
@@ -82,45 +81,46 @@ async fn main() -> Result<(), IndexerError> {
     let _guard = telemetry_subscribers::TelemetryConfig::new()
         .with_env()
         .init();
-    let command = CliArgs::init();
+    let (command, config) = CliArgs::init();
 
-    info!("Parsed config: {:#?}", *CONFIG);
+    info!("Parsed config: {:#?}", config);
     let (_registry_service, registry) = start_prometheus_server(
         // NOTE: this parses the input host addr and port number for socket addr,
         // so unwrap() is safe here.
         format!(
             "{}:{}",
-            &CONFIG.client_metric_host, &CONFIG.client_metric_port
+            &config.client_metric_host, &config.client_metric_port
         )
         .parse()
         .unwrap(),
-        &CONFIG.rpc_client_url.as_str(),
+        &config.rpc_client_url.as_str(),
     )?;
 
     match command {
         Cmd::Sync => {
             #[cfg(feature = "postgres-feature")]
-            sui_indexer::db::setup_postgres::fullnode_sync_worker(registry.clone()).await?;
+            sui_indexer::db::setup_postgres::fullnode_sync_worker(registry.clone(), &config)
+                .await?;
 
-            #[cfg(feature = "mysql-feature")]
             #[cfg(not(feature = "postgres-feature"))]
-            sui_indexer::db::setup_mysql::setup(indexer_config, registry).await?;
+            anyhow::bail!("sync only implemented for postgres-feature");
         }
         Cmd::Serve => {
             #[cfg(feature = "postgres-feature")]
-            sui_indexer::db::setup_postgres::rpc_server_worker(registry.clone()).await?;
+            sui_indexer::db::setup_postgres::rpc_server_worker(registry.clone(), &config).await?;
             #[cfg(not(feature = "postgres-feature"))]
             anyhow::bail!("serve only implemented for postgres-feature");
         }
         Cmd::AddCheckpoints { checkpoints } => {
             #[cfg(feature = "postgres-feature")]
-            sui_indexer::db::setup_postgres::index_checkpoints(registry, checkpoints).await?;
+            sui_indexer::db::setup_postgres::index_checkpoints(registry, checkpoints, &config)
+                .await?;
             #[cfg(not(feature = "postgres-feature"))]
             anyhow::bail!("add-checkpoints only implemented for postgres-feature");
         }
         Cmd::ResetDb => {
             #[cfg(feature = "postgres-feature")]
-            sui_indexer::db::setup_postgres::reset_db().await?;
+            sui_indexer::db::setup_postgres::reset_db(&config.database).await?;
             #[cfg(not(feature = "postgres-feature"))]
             anyhow::bail!("reset-db only implemented for postgres-feature");
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::sync::Mutex;
+use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{anyhow, Result};
@@ -46,6 +47,7 @@ use sui_types::{coin::CoinMetadata, event::EventID};
 use crate::db::{ConnectionConfig, ConnectionPool, ConnectionPoolConfig};
 use crate::models::transactions::{stored_events_to_events, StoredTransactionEvents};
 use crate::store::diesel_macro::*;
+use crate::DbConfig;
 use crate::{
     errors::IndexerError,
     models::{
@@ -93,9 +95,13 @@ pub type PackageResolver<T> =
 
 // Impl for common initialization and utilities
 impl<U: R2D2Connection + 'static> IndexerReader<U> {
-    pub fn new<T: Into<String>>(db_url: T) -> Result<Self> {
-        let config = ConnectionPoolConfig::default();
-        Self::new_with_config(db_url, config)
+    pub fn new<T: Into<String>>(db_url: T, db_config: &DbConfig) -> Result<Self> {
+        let pool_config = ConnectionPoolConfig {
+            pool_size: db_config.db_pool_size,
+            connection_timeout: Duration::from_secs(db_config.db_connection_timeout),
+            statement_timeout: Duration::from_secs(db_config.db_statement_timeout),
+        };
+        Self::new_with_config(db_url, pool_config)
     }
 
     pub fn new_with_config<T: Into<String>>(

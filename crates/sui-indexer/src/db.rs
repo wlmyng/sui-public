@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use std::time::Duration;
 
 use crate::errors::IndexerError;
-use crate::CONFIG;
+use crate::DbConfig;
 use diesel::connection::BoxableConnection;
 #[cfg(feature = "postgres-feature")]
 use diesel::query_dsl::RunQueryDsl;
@@ -40,20 +40,6 @@ impl ConnectionPoolConfig {
 
     pub fn set_statement_timeout(&mut self, timeout: Duration) {
         self.statement_timeout = timeout;
-    }
-}
-
-impl Default for ConnectionPoolConfig {
-    fn default() -> Self {
-        let db_pool_size = CONFIG.database.db_pool_size;
-        let conn_timeout_secs = CONFIG.database.db_connection_timeout;
-        let statement_timeout_secs = CONFIG.database.db_statement_timeout;
-
-        Self {
-            pool_size: db_pool_size,
-            connection_timeout: Duration::from_secs(conn_timeout_secs),
-            statement_timeout: Duration::from_secs(statement_timeout_secs),
-        }
     }
 }
 
@@ -110,8 +96,13 @@ impl<T: R2D2Connection + 'static> diesel::r2d2::CustomizeConnection<T, diesel::r
 pub fn new_connection_pool<T: R2D2Connection + 'static>(
     db_url: &str,
     pool_size: Option<u32>,
+    db_config: &DbConfig,
 ) -> Result<ConnectionPool<T>, IndexerError> {
-    let pool_config = ConnectionPoolConfig::default();
+    let pool_config = ConnectionPoolConfig {
+        pool_size: db_config.db_pool_size,
+        connection_timeout: Duration::from_secs(db_config.db_connection_timeout),
+        statement_timeout: Duration::from_secs(db_config.db_statement_timeout),
+    };
     new_connection_pool_with_config(db_url, pool_size, pool_config)
 }
 
@@ -185,7 +176,7 @@ pub mod setup_postgres {
     use crate::indexer::Indexer;
     use crate::metrics::IndexerMetrics;
     use crate::store::PgIndexerStore;
-    use crate::CONFIG;
+    use crate::{Config, DbConfig};
     use anyhow::anyhow;
     use diesel::migration::MigrationSource;
     use diesel::{PgConnection, RunQueryDsl};
@@ -196,8 +187,11 @@ pub mod setup_postgres {
 
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/pg");
 
-    pub async fn fullnode_sync_worker(registry: Registry) -> Result<(), IndexerError> {
-        let blocking_cp = get_blocking_connection_pool()?;
+    pub async fn fullnode_sync_worker(
+        registry: Registry,
+        config: &Config,
+    ) -> Result<(), IndexerError> {
+        let blocking_cp = get_blocking_connection_pool(&config.database)?;
         let indexer_metrics = IndexerMetrics::new(&registry);
         mysten_metrics::init_metrics(&registry);
 
@@ -220,25 +214,30 @@ pub mod setup_postgres {
             }
         });
 
-        let store = PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone());
+        let store =
+            PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
         Indexer::start_writer::<PgIndexerStore<PgConnection>, PgConnection>(
             store,
             indexer_metrics,
-            &CONFIG,
+            &config,
         )
         .await
     }
 
-    pub async fn rpc_server_worker(registry: Registry) -> Result<(), IndexerError> {
-        let db_url = get_db_url()?.expose_secret().clone();
-        Indexer::start_reader::<PgConnection>(&registry, db_url, &CONFIG).await
+    pub async fn rpc_server_worker(
+        registry: Registry,
+        config: &Config,
+    ) -> Result<(), IndexerError> {
+        let db_url = get_db_url(&config.database)?.expose_secret().clone();
+        Indexer::start_reader::<PgConnection>(&registry, db_url, &config).await
     }
 
     pub async fn index_checkpoints(
         registry: Registry,
         sequence_numbers: Vec<u64>,
+        config: &Config,
     ) -> Result<(), IndexerError> {
-        let blocking_cp = get_blocking_connection_pool()?;
+        let blocking_cp = get_blocking_connection_pool(&config.database)?;
         let indexer_metrics = IndexerMetrics::new(&registry);
         mysten_metrics::init_metrics(&registry);
 
@@ -260,19 +259,20 @@ pub mod setup_postgres {
                 tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             }
         });
-        let store = PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone());
+        let store =
+            PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
         Indexer::index_checkpoints::<PgIndexerStore<PgConnection>, PgConnection>(
             sequence_numbers,
             store,
             indexer_metrics,
-            &CONFIG,
+            &config,
         )
         .await
     }
 
-    pub async fn reset_db() -> Result<(), IndexerError> {
-        let blocking_cp = get_blocking_connection_pool()?;
-        let db_url = get_db_url()?.expose_secret().clone();
+    pub async fn reset_db(db_config: &DbConfig) -> Result<(), IndexerError> {
+        let blocking_cp = get_blocking_connection_pool(db_config)?;
+        let db_url = get_db_url(db_config)?.expose_secret().clone();
         let mut conn = get_pool_connection(&blocking_cp).map_err(|e| {
             error!(
                 "Failed getting Postgres connection from connection pool with error {:?}",
@@ -334,20 +334,26 @@ pub mod setup_postgres {
         Ok(())
     }
 
-    fn get_blocking_connection_pool() -> Result<super::ConnectionPool<PgConnection>, IndexerError> {
-        let conn = new_connection_pool::<PgConnection>(get_db_url()?.expose_secret(), None)
-            .map_err(|e| {
-                error!(
-                    "Failed creating Postgres connection pool with error {:?}",
-                    e
-                );
+    fn get_blocking_connection_pool(
+        db_config: &DbConfig,
+    ) -> Result<super::ConnectionPool<PgConnection>, IndexerError> {
+        let conn = new_connection_pool::<PgConnection>(
+            get_db_url(db_config)?.expose_secret(),
+            None,
+            db_config,
+        )
+        .map_err(|e| {
+            error!(
+                "Failed creating Postgres connection pool with error {:?}",
                 e
-            })?;
+            );
+            e
+        })?;
         Ok(conn)
     }
 
-    fn get_db_url() -> Result<secrecy::Secret<String>, IndexerError> {
-        CONFIG.database.get_db_url().map_err(|e| {
+    fn get_db_url(db_config: &DbConfig) -> Result<secrecy::Secret<String>, IndexerError> {
+        db_config.get_db_url().map_err(|e| {
             IndexerError::PgPoolConnectionError(format!(
                 "Failed parsing database url with error {:?}",
                 e

@@ -16,7 +16,6 @@ chrono.workspace = true
 serde_with.workspace = true
 clap.workspace = true
 tap.workspace = true
-once_cell.workspace = true
 diesel = { workspace = true, optional = true }
 diesel-derive-enum = { workspace = true, optional = true }
 futures.workspace = true

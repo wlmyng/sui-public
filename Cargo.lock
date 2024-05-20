@@ -12779,7 +12779,6 @@ dependencies = [
  "mysten-metrics",
  "ntest",
  "object_store 0.7.0",
- "once_cell",
  "prometheus",
  "rayon",
  "regex",

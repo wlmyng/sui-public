@@ -3,7 +3,7 @@
 
 use crate::handlers::committer::start_tx_checkpoint_commit_task;
 use crate::models::display::StoredDisplay;
-use crate::CONFIG;
+use crate::{CheckpointHandlerConfig, Config};
 use async_trait::async_trait;
 use itertools::Itertools;
 use move_core_types::account_address::AccountAddress;
@@ -57,11 +57,12 @@ pub async fn new_handlers<S>(
     metrics: IndexerMetrics,
     next_checkpoint_sequence_number: CheckpointSequenceNumber,
     cancel: CancellationToken,
+    config: &Config,
 ) -> Result<CheckpointHandler<S>, IndexerError>
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
 {
-    let checkpoint_queue_size = CONFIG.checkpoint_handler.queue_size;
+    let checkpoint_queue_size = config.checkpoint_handler.queue_size;
     let global_metrics = get_metrics().unwrap();
     let (indexed_checkpoint_sender, indexed_checkpoint_receiver) =
         mysten_metrics::metered_channel::channel(
@@ -74,18 +75,22 @@ where
     let state_clone = state.clone();
     let client_clone = client.clone();
     let metrics_clone = metrics.clone();
+    let config_clone = config.clone();
     spawn_monitored_task!(start_tx_checkpoint_commit_task(
         state_clone,
         client_clone,
         metrics_clone,
         indexed_checkpoint_receiver,
         next_checkpoint_sequence_number,
-        cancel.clone()
+        cancel.clone(),
+        config_clone,
     ));
+
     Ok(CheckpointHandler::new(
         state,
         metrics,
         indexed_checkpoint_sender,
+        &config.checkpoint_handler,
     ))
 }
 
@@ -138,11 +143,12 @@ where
         state: S,
         metrics: IndexerMetrics,
         indexed_checkpoint_sender: mysten_metrics::metered_channel::Sender<CheckpointDataToCommit>,
+        config: &CheckpointHandlerConfig,
     ) -> Self {
         Self {
             state,
             metrics,
-            filter_packages: CONFIG.checkpoint_handler.filter_packages.clone(),
+            filter_packages: config.filter_packages.clone(),
             indexed_checkpoint_sender,
         }
     }

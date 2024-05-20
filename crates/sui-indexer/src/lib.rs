@@ -9,7 +9,6 @@ use anyhow::{anyhow, Result};
 use diesel::r2d2::R2D2Connection;
 use jsonrpsee::http_client::{HeaderMap, HeaderValue, HttpClient, HttpClientBuilder};
 use mysten_metrics::spawn_monitored_task;
-use once_cell::sync::OnceCell;
 use prometheus::Registry;
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
@@ -45,27 +44,6 @@ pub mod schema;
 pub mod store;
 pub mod system_package_task;
 pub mod types;
-
-pub static CONFIG: OnceConfig = OnceConfig::new();
-
-pub struct OnceConfig(OnceCell<Config>);
-
-impl OnceConfig {
-    pub const fn new() -> Self {
-        Self(OnceCell::new())
-    }
-
-    pub fn set(&self, config: Config) {
-        self.0.set(config).expect("Config already initialized")
-    }
-}
-
-impl std::ops::Deref for OnceConfig {
-    type Target = Config;
-    fn deref(&self) -> &Self::Target {
-        self.0.get().expect("Config not initialized")
-    }
-}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "kebab-case")]

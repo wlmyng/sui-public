@@ -110,8 +110,15 @@ impl Indexer {
             1,
             DataIngestionMetrics::new(&Registry::new()),
         );
-        let worker =
-            new_handlers::<S>(store, rest_client, metrics, watermark, cancel.clone()).await?;
+        let worker = new_handlers::<S>(
+            store,
+            rest_client,
+            metrics,
+            watermark,
+            cancel.clone(),
+            config,
+        )
+        .await?;
         let worker_pool = WorkerPool::new(
             worker,
             "workflow".to_string(),
@@ -188,7 +195,7 @@ impl Indexer {
             "Sui Indexer Reader (version {:?}) started...",
             env!("CARGO_PKG_VERSION")
         );
-        let indexer_reader = IndexerReader::<T>::new(db_url)?;
+        let indexer_reader = IndexerReader::<T>::new(db_url, &config.database)?;
         let handle = build_json_rpc_server(registry, indexer_reader, config, None)
             .await
             .expect("Json rpc server should not run into errors upon start.");
