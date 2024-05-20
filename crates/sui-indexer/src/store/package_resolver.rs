@@ -35,6 +35,7 @@ impl<T: R2D2Connection> Clone for IndexerStorePackageResolver<T> {
 }
 
 impl<T: R2D2Connection> IndexerStorePackageResolver<T> {
+    #[allow(unused)]
     pub fn new(cp: ConnectionPool<T>) -> Self {
         Self { cp }
     }
@@ -90,6 +91,7 @@ pub struct InterimPackageResolver<T: R2D2Connection + 'static> {
 }
 
 impl<T: R2D2Connection> InterimPackageResolver<T> {
+    #[allow(unused)]
     pub fn new(
         package_db_resolver: IndexerStorePackageResolver<T>,
         package_buffer: Arc<Mutex<IndexingPackageBuffer>>,

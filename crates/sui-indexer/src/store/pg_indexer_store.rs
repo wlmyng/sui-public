@@ -158,10 +158,12 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
         }
     }
 
+    #[allow(unused)]
     pub fn blocking_cp(&self) -> ConnectionPool<T> {
         self.blocking_cp.clone()
     }
 
+    #[allow(unused)]
     pub fn get_latest_epoch_id(&self) -> Result<Option<u64>, IndexerError> {
         read_only_blocking!(&self.blocking_cp, |conn| {
             epochs::dsl::epochs

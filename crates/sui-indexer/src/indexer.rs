@@ -21,11 +21,9 @@ use sui_data_ingestion_core::{
     ShimProgressStore, WorkerPool,
 };
 
-use crate::build_json_rpc_server;
 use crate::errors::IndexerError;
 use crate::handlers::checkpoint_handler::{new_handlers, CheckpointHandler};
 use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, SnapshotLagConfig};
-use crate::indexer_reader::IndexerReader;
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
 use crate::Config;
@@ -183,26 +181,6 @@ impl Indexer {
             )
             .await;
         }
-        Ok(())
-    }
-
-    pub async fn start_reader<T: R2D2Connection + 'static>(
-        registry: &Registry,
-        db_url: String,
-        config: &Config,
-    ) -> Result<(), IndexerError> {
-        info!(
-            "Sui Indexer Reader (version {:?}) started...",
-            env!("CARGO_PKG_VERSION")
-        );
-        let indexer_reader = IndexerReader::<T>::new(db_url, &config.database)?;
-        let handle = build_json_rpc_server(registry, indexer_reader, config, None)
-            .await
-            .expect("Json rpc server should not run into errors upon start.");
-        tokio::spawn(async move { handle.stopped().await })
-            .await
-            .expect("Rpc server task failed");
-
         Ok(())
     }
 }

@@ -55,6 +55,7 @@ pub struct StoredTransaction {
     pub success_command_count: i16,
 }
 
+#[allow(unused)]
 #[cfg(feature = "postgres-feature")]
 pub type StoredTransactionEvents = Vec<Option<Vec<u8>>>;
 
@@ -474,58 +475,6 @@ impl StoredTransaction {
     }
 }
 
-pub fn stored_events_to_events(
-    stored_events: StoredTransactionEvents,
-) -> Result<Vec<Event>, IndexerError> {
-    #[cfg(feature = "postgres-feature")]
-    {
-        stored_events
-            .into_iter()
-            .map(|event| match event {
-                Some(event) => {
-                    let event: Event = bcs::from_bytes(&event).map_err(|e| {
-                        IndexerError::PersistentStorageDataCorruptionError(format!(
-                            "Can't convert event bytes into Event. Error: {e}",
-                        ))
-                    })?;
-                    Ok(event)
-                }
-                None => Err(IndexerError::PersistentStorageDataCorruptionError(
-                    "Event should not be null".to_string(),
-                )),
-            })
-            .collect::<Result<Vec<Event>, IndexerError>>()
-    }
-    #[cfg(feature = "mysql-feature")]
-    #[cfg(not(feature = "postgres-feature"))]
-    {
-        stored_events
-            .as_array()
-            .ok_or_else(|| {
-                IndexerError::PersistentStorageDataCorruptionError(
-                    "Failed to parse events as array".to_string(),
-                )
-            })?
-            .iter()
-            .map(|event| match event {
-                serde_json::Value::Null => Err(IndexerError::PersistentStorageDataCorruptionError(
-                    "events should not contain null elements".to_string(),
-                )),
-                serde_json::Value::String(event) => {
-                    let event: Event = bcs::from_bytes(event.as_bytes()).map_err(|e| {
-                        IndexerError::PersistentStorageDataCorruptionError(format!(
-                            "Can't convert event bytes into Event. Error: {e}",
-                        ))
-                    })?;
-                    Ok(event)
-                }
-                _ => Err(IndexerError::PersistentStorageDataCorruptionError(
-                    "events should contain only string elements".to_string(),
-                )),
-            })
-            .collect::<Result<Vec<Event>, IndexerError>>()
-    }
-}
 pub async fn tx_events_to_sui_tx_events(
     tx_events: TransactionEvents,
     package_resolver: Arc<Resolver<impl PackageStore>>,

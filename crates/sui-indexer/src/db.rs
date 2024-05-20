@@ -29,18 +29,6 @@ impl ConnectionPoolConfig {
             read_only: false,
         }
     }
-
-    pub fn set_pool_size(&mut self, size: u32) {
-        self.pool_size = size;
-    }
-
-    pub fn set_connection_timeout(&mut self, timeout: Duration) {
-        self.connection_timeout = timeout;
-    }
-
-    pub fn set_statement_timeout(&mut self, timeout: Duration) {
-        self.statement_timeout = timeout;
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -137,6 +125,7 @@ pub fn get_pool_connection<T: R2D2Connection + Send + 'static>(
     })
 }
 
+#[allow(unused)]
 pub fn reset_database<T: R2D2Connection + Send + 'static>(
     conn: &mut PoolConnection<T>,
     drop_all: bool,
@@ -222,14 +211,6 @@ pub mod setup_postgres {
             &config,
         )
         .await
-    }
-
-    pub async fn rpc_server_worker(
-        registry: Registry,
-        config: &Config,
-    ) -> Result<(), IndexerError> {
-        let db_url = get_db_url(&config.database)?.expose_secret().clone();
-        Indexer::start_reader::<PgConnection>(&registry, db_url, &config).await
     }
 
     pub async fn index_checkpoints(

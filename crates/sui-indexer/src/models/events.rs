@@ -69,6 +69,7 @@ pub struct StoredEvent {
     pub bcs: Vec<u8>,
 }
 
+#[allow(unused)]
 #[cfg(feature = "postgres-feature")]
 pub type SendersType = Vec<Option<Vec<u8>>>;
 

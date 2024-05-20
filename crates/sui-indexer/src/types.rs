@@ -267,12 +267,6 @@ pub fn owner_to_owner_info(owner: &Owner) -> (OwnerType, Option<SuiAddress>) {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum DynamicFieldKind {
-    DynamicField = 0,
-    DynamicObject = 1,
-}
-
 #[derive(Clone, Debug)]
 pub struct IndexedObject {
     pub object_id: ObjectID,

@@ -312,13 +312,20 @@ pub mod diesel_macro {
         }};
     }
 
+    #[allow(unused)]
     pub use blocking_call_is_ok_or_panic;
     pub use read_only_blocking;
+    #[allow(unused)]
     pub use read_only_repeatable_blocking;
+    #[allow(unused)]
     pub use run_query;
+    #[allow(unused)]
     pub use run_query_async;
+    #[allow(unused)]
     pub use run_query_repeatable;
+    #[allow(unused)]
     pub use run_query_repeatable_async;
+    #[allow(unused)]
     pub use spawn_read_only_blocking;
     pub use transactional_blocking_with_retry;
 }
