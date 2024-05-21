@@ -1,7 +1,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use sui_json_rpc::name_service::NameServiceError;
 use thiserror::Error;
 
 use sui_types::base_types::ObjectIDParseError;
@@ -117,9 +116,6 @@ pub enum IndexerError {
 
     #[error("Indexer failed to send item to channel with error: `{0}`")]
     MpscChannelError(String),
-
-    #[error(transparent)]
-    NameServiceError(#[from] NameServiceError),
 }
 
 pub trait Context<T> {
