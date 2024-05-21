@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::Result;
 use backoff::backoff::Backoff as _;
 use prometheus::Registry;
-use sui_rest_api::CheckpointData;
+use sui_types::full_checkpoint_content::CheckpointData;
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -22,7 +22,6 @@ use sui_data_ingestion_core::{
 
 use crate::errors::IndexerError;
 use crate::handlers::checkpoint_handler::{new_handlers, CheckpointHandler};
-use crate::handlers::objects_snapshot_processor::{ObjectsSnapshotProcessor, SnapshotLagConfig};
 use crate::metrics::IndexerMetrics;
 use crate::store::IndexerStore;
 use crate::Config;
@@ -35,25 +34,13 @@ impl Indexer {
         metrics: IndexerMetrics,
         config: &Config,
     ) -> Result<(), IndexerError> {
-        let snapshot_config = SnapshotLagConfig::new(
-            config.object_snapshot.min_checkpoint_lag,
-            config.object_snapshot.max_checkpoint_lag,
-            None,
-        );
-        Indexer::start_writer_with_config::<S>(
-            store,
-            metrics,
-            snapshot_config,
-            CancellationToken::new(),
-            config,
-        )
-        .await
+        Indexer::start_writer_with_config::<S>(store, metrics, CancellationToken::new(), config)
+            .await
     }
 
     pub async fn start_writer_with_config<S: IndexerStore + Sync + Send + Clone + 'static>(
         store: S,
         metrics: IndexerMetrics,
-        snapshot_config: SnapshotLagConfig,
         cancel: CancellationToken,
         config: &Config,
     ) -> Result<(), IndexerError> {
@@ -77,17 +64,6 @@ impl Indexer {
                 .unwrap_or_default(),
         );
 
-        let rest_client = sui_rest_api::Client::new(format!("{}/rest", config.rpc_client_url));
-
-        let objects_snapshot_processor = ObjectsSnapshotProcessor::new_with_config(
-            rest_client.clone(),
-            store.clone(),
-            metrics.clone(),
-            snapshot_config,
-            cancel.clone(),
-        );
-        spawn_monitored_task!(objects_snapshot_processor.start());
-
         let cancel_clone = cancel.clone();
         let (exit_sender, exit_receiver) = oneshot::channel();
         // Spawn a task that links the cancellation token to the exit sender
@@ -101,15 +77,7 @@ impl Indexer {
             1,
             DataIngestionMetrics::new(&Registry::new()),
         );
-        let worker = new_handlers::<S>(
-            store,
-            rest_client,
-            metrics,
-            watermark,
-            cancel.clone(),
-            config,
-        )
-        .await?;
+        let worker = new_handlers::<S>(store, metrics, watermark, cancel.clone(), config).await?;
         let worker_pool = WorkerPool::new(
             worker,
             "workflow".to_string(),
@@ -162,14 +130,8 @@ impl Indexer {
             let data = CheckpointHandler::data_to_commit(checkpoint, store.clone(), &metrics, None)
                 .await?;
             let epoch = data.epoch.clone();
-            crate::handlers::committer::commit_checkpoints(
-                &store,
-                vec![data],
-                epoch,
-                &metrics,
-                false, // object_snapshot_backfill_mode
-            )
-            .await;
+            crate::handlers::committer::commit_checkpoints(&store, vec![data], epoch, &metrics)
+                .await;
         }
         Ok(())
     }

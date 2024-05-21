@@ -1,13 +1,33 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+// TODO: adapt this to run as a separate process or figure out how not to depend on it in the
+// GraphQL server.
+#![allow(dead_code)]
+
+use serde::Deserialize;
+use sui_rest_api::Client;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 
-use sui_rest_api::Client;
-
 use crate::types::IndexerResult;
 use crate::{metrics::IndexerMetrics, store::IndexerStore};
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ObjectSnapshotConfig {
+    pub(crate) min_checkpoint_lag: usize,
+    pub(crate) max_checkpoint_lag: usize,
+}
+
+impl Default for ObjectSnapshotConfig {
+    fn default() -> Self {
+        Self {
+            min_checkpoint_lag: 300,
+            max_checkpoint_lag: 900,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SnapshotLagConfig {

@@ -155,9 +155,6 @@ pub struct Config {
     pub data_ingestion: DataIngestionConfig,
 
     #[serde(default)]
-    pub object_snapshot: ObjectSnapshotConfig,
-
-    #[serde(default)]
     pub checkpoint_handler: CheckpointHandlerConfig,
 
     #[serde(default)]
@@ -266,22 +263,6 @@ impl DbConfig {
                 )))
             }
             _ => Err(anyhow!("Invalid db connection config, either db_url or (db_user_name, db_password, db_host, db_port, db_name) must be provided")),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct ObjectSnapshotConfig {
-    pub(crate) min_checkpoint_lag: usize,
-    pub(crate) max_checkpoint_lag: usize,
-}
-
-impl Default for ObjectSnapshotConfig {
-    fn default() -> Self {
-        Self {
-            min_checkpoint_lag: 300,
-            max_checkpoint_lag: 900,
         }
     }
 }

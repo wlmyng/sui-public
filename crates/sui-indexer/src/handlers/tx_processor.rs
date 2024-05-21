@@ -1,21 +1,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use async_trait::async_trait;
-use sui_rest_api::CheckpointData;
-
 use std::collections::HashMap;
-use sui_types::object::Object;
 
+use async_trait::async_trait;
 use sui_json_rpc::get_balance_changes_from_effect;
 use sui_json_rpc::get_object_changes;
 use sui_json_rpc::ObjectProvider;
+use sui_types::base_types::ObjectID;
 use sui_types::base_types::SequenceNumber;
 use sui_types::digests::TransactionDigest;
 use sui_types::effects::{TransactionEffects, TransactionEffectsAPI};
+use sui_types::full_checkpoint_content::CheckpointData;
+use sui_types::object::Object;
 use sui_types::transaction::{TransactionData, TransactionDataAPI};
-
-use sui_types::base_types::ObjectID;
 
 use crate::errors::IndexerError;
 use crate::metrics::IndexerMetrics;

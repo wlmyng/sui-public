@@ -11,10 +11,10 @@ use move_core_types::language_storage::TypeTag;
 use mysten_metrics::{get_metrics, spawn_monitored_task};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use sui_rest_api::{CheckpointData, CheckpointTransaction, Client};
 use sui_types::base_types::{ExecutionDigests, ObjectRef};
 use sui_types::dynamic_field::DynamicFieldInfo;
 use sui_types::dynamic_field::DynamicFieldType;
+use sui_types::full_checkpoint_content::{CheckpointData, CheckpointTransaction};
 use sui_types::messages_checkpoint::{
     CertifiedCheckpointSummary, CheckpointContents, CheckpointSequenceNumber,
 };
@@ -53,7 +53,6 @@ use super::TransactionObjectChangesToCommit;
 
 pub async fn new_handlers<S>(
     state: S,
-    client: Client,
     metrics: IndexerMetrics,
     next_checkpoint_sequence_number: CheckpointSequenceNumber,
     cancel: CancellationToken,
@@ -73,12 +72,10 @@ where
         );
 
     let state_clone = state.clone();
-    let client_clone = client.clone();
     let metrics_clone = metrics.clone();
     let config_clone = config.clone();
     spawn_monitored_task!(start_tx_checkpoint_commit_task(
         state_clone,
-        client_clone,
         metrics_clone,
         indexed_checkpoint_receiver,
         next_checkpoint_sequence_number,
