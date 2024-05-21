@@ -203,8 +203,7 @@ pub mod setup_postgres {
             }
         });
 
-        let store =
-            PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
+        let store = PgIndexerStore::new(blocking_cp, indexer_metrics.clone(), config);
         Indexer::start_writer(store, indexer_metrics, config).await
     }
 
@@ -235,8 +234,7 @@ pub mod setup_postgres {
                 tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
             }
         });
-        let store =
-            PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
+        let store = PgIndexerStore::new(blocking_cp, indexer_metrics.clone(), config);
         Indexer::index_checkpoints(sequence_numbers, store, indexer_metrics, config).await
     }
 
