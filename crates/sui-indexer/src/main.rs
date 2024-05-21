@@ -87,7 +87,7 @@ async fn main() -> Result<(), IndexerError> {
         )
         .parse()
         .unwrap(),
-        &config.rpc_client_url.as_str(),
+        config.rpc_client_url.as_str(),
     )?;
 
     match command {

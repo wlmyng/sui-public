@@ -5,7 +5,7 @@ use crate::handlers::committer::start_tx_checkpoint_commit_task;
 use crate::models::display::StoredDisplay;
 use crate::{CheckpointHandlerConfig, Config};
 use async_trait::async_trait;
-use itertools::Itertools;
+use itertools::Itertools as _;
 use move_core_types::account_address::AccountAddress;
 use move_core_types::language_storage::TypeTag;
 use mysten_metrics::{get_metrics, spawn_monitored_task};

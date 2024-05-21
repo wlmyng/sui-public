@@ -15,8 +15,8 @@ use diesel::r2d2::R2D2Connection;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::{QueryDsl, RunQueryDsl};
-use downcast::Any;
-use itertools::Itertools;
+use downcast::Any as _;
+use itertools::Itertools as _;
 use tap::TapFallible;
 use tracing::info;
 

@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use anyhow::Result;
 use backoff::backoff::Backoff as _;
-use diesel::r2d2::R2D2Connection;
 use prometheus::Registry;
 use sui_rest_api::CheckpointData;
 use sui_types::messages_checkpoint::CheckpointSequenceNumber;
@@ -31,10 +30,7 @@ use crate::Config;
 pub struct Indexer;
 
 impl Indexer {
-    pub async fn start_writer<
-        S: IndexerStore + Sync + Send + Clone + 'static,
-        T: R2D2Connection + 'static,
-    >(
+    pub async fn start_writer<S: IndexerStore + Sync + Send + Clone + 'static>(
         store: S,
         metrics: IndexerMetrics,
         config: &Config,
@@ -44,7 +40,7 @@ impl Indexer {
             config.object_snapshot.max_checkpoint_lag,
             None,
         );
-        Indexer::start_writer_with_config::<S, T>(
+        Indexer::start_writer_with_config::<S>(
             store,
             metrics,
             snapshot_config,
@@ -54,10 +50,7 @@ impl Indexer {
         .await
     }
 
-    pub async fn start_writer_with_config<
-        S: IndexerStore + Sync + Send + Clone + 'static,
-        T: R2D2Connection + 'static,
-    >(
+    pub async fn start_writer_with_config<S: IndexerStore + Sync + Send + Clone + 'static>(
         store: S,
         metrics: IndexerMetrics,
         snapshot_config: SnapshotLagConfig,
@@ -145,10 +138,7 @@ impl Indexer {
         Ok(())
     }
 
-    pub async fn index_checkpoints<
-        S: IndexerStore + Sync + Send + Clone + 'static,
-        T: R2D2Connection + 'static,
-    >(
+    pub async fn index_checkpoints<S: IndexerStore + Sync + Send + Clone + 'static>(
         sequence_numbers: Vec<u64>,
         store: S,
         metrics: IndexerMetrics,

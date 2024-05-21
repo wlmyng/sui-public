@@ -1,9 +1,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use fastcrypto::error::FastCryptoError;
-use jsonrpsee::core::Error as RpcError;
-use jsonrpsee::types::error::CallError;
 use sui_json_rpc::name_service::NameServiceError;
 use thiserror::Error;
 
@@ -45,9 +42,6 @@ pub enum IndexerError {
 
     #[error("Indexer failed to convert structs to diesel Insertable with error: `{0}`")]
     InsertableParsingError(String),
-
-    #[error("Indexer failed to build JsonRpcServer with error: `{0}`")]
-    JsonRpcServerError(#[from] sui_json_rpc::error::Error),
 
     #[error("Indexer failed to find object mutations, which should never happen.")]
     ObjectMutationNotAvailable,
@@ -118,9 +112,6 @@ pub enum IndexerError {
     #[error(transparent)]
     ObjectResponseError(#[from] SuiObjectResponseError),
 
-    #[error(transparent)]
-    FastCryptoError(#[from] FastCryptoError),
-
     #[error("`{0}`: `{1}`")]
     ErrorWithContext(String, Box<IndexerError>),
 
@@ -138,12 +129,6 @@ pub trait Context<T> {
 impl<T> Context<T> for Result<T, IndexerError> {
     fn context(self, context: &str) -> Result<T, IndexerError> {
         self.map_err(|e| IndexerError::ErrorWithContext(context.to_string(), Box::new(e)))
-    }
-}
-
-impl From<IndexerError> for RpcError {
-    fn from(e: IndexerError) -> Self {
-        RpcError::Call(CallError::Failed(e.into()))
     }
 }
 

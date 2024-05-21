@@ -13,7 +13,7 @@ use crate::errors::IndexerError;
 use crate::handlers::EpochToCommit;
 use crate::models::epoch::StoredEpochInfo;
 use crate::store::diesel_macro::*;
-use downcast::Any;
+use downcast::Any as _;
 
 const GET_PARTITION_SQL: &str = if cfg!(feature = "postgres-feature") {
     r"

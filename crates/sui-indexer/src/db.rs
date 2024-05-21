@@ -205,12 +205,7 @@ pub mod setup_postgres {
 
         let store =
             PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
-        Indexer::start_writer::<PgIndexerStore<PgConnection>, PgConnection>(
-            store,
-            indexer_metrics,
-            &config,
-        )
-        .await
+        Indexer::start_writer(store, indexer_metrics, config).await
     }
 
     pub async fn index_checkpoints(
@@ -242,13 +237,7 @@ pub mod setup_postgres {
         });
         let store =
             PgIndexerStore::<PgConnection>::new(blocking_cp, indexer_metrics.clone(), config);
-        Indexer::index_checkpoints::<PgIndexerStore<PgConnection>, PgConnection>(
-            sequence_numbers,
-            store,
-            indexer_metrics,
-            &config,
-        )
-        .await
+        Indexer::index_checkpoints(sequence_numbers, store, indexer_metrics, config).await
     }
 
     pub async fn reset_db(db_config: &DbConfig) -> Result<(), IndexerError> {
@@ -261,12 +250,12 @@ pub mod setup_postgres {
             );
             e
         })?;
-        Ok(reset_database(&mut conn, /* drop_all */ true).map_err(|e| {
+        reset_database(&mut conn, /* drop_all */ true).map_err(|e| {
             let db_err_msg =
                 format!("Failed resetting database with url: {db_url:?} and error: {e:?}",);
             error!("{}", db_err_msg);
             IndexerError::PostgresResetError(db_err_msg)
-        })?)
+        })
     }
 
     pub fn reset_database(
