@@ -113,7 +113,6 @@ pub struct PgIndexerStoreConfig {
     pub parallel_objects_chunk_size: usize,
     pub epochs_to_keep: Option<u64>,
     pub skip_object_history: bool,
-    pub skip_object_snapshot: bool,
 }
 
 pub struct PgIndexerStore<T: R2D2Connection + 'static> {
@@ -147,7 +146,6 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
             parallel_objects_chunk_size,
             epochs_to_keep,
             skip_object_history: config.postgres_store.skip_object_history,
-            skip_object_snapshot: config.postgres_store.skip_object_snapshot,
         };
 
         Self {
@@ -1230,11 +1228,6 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         start_cp: u64,
         end_cp: u64,
     ) -> Result<(), IndexerError> {
-        if self.config.skip_object_snapshot {
-            info!("skipping object snapshot");
-            return Ok(());
-        }
-
         let guard = self.metrics.update_object_snapshot_latency.start_timer();
 
         self.spawn_blocking_task(move |this| this.update_objects_snapshot(start_cp, end_cp))

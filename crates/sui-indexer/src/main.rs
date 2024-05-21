@@ -300,7 +300,6 @@ pub struct PgIndexerStoreConfig {
     pub(crate) commit_objects_parallel_chunk_size: usize,
     pub(crate) epochs_to_keep: Option<u64>,
     pub(crate) skip_object_history: bool,
-    pub(crate) skip_object_snapshot: bool,
 }
 
 impl Default for PgIndexerStoreConfig {
@@ -310,7 +309,6 @@ impl Default for PgIndexerStoreConfig {
             commit_objects_parallel_chunk_size: 500,
             epochs_to_keep: None,
             skip_object_history: false,
-            skip_object_snapshot: false,
         }
     }
 }
