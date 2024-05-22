@@ -232,7 +232,11 @@ impl DynamicField {
             // checkpoint found on the cursor.
             let cursor = stored.cursor(checkpoint_viewed_at).encode_cursor();
 
-            let object = Object::try_from_stored_history_object(stored, checkpoint_viewed_at)?;
+            let object = Object::try_from_stored_history_object(
+                stored,
+                checkpoint_viewed_at,
+                parent_version,
+            )?;
 
             let move_ = MoveObject::try_from(&object).map_err(|_| {
                 Error::Internal(format!(
