@@ -768,12 +768,12 @@ impl Object {
         // paginated queries are consistent with the previous query that created the cursor.
         let cursor_viewed_at = page.validate_cursor_consistency()?;
         let checkpoint_viewed_at = cursor_viewed_at.unwrap_or(checkpoint_viewed_at);
-        let available_range_len = db.limits.available_range_len;
+        let available_range_cfg = db.limits.available_range;
 
         let Some((prev, next, results)) = db
             .execute_repeatable(move |conn| {
                 let Some(range) =
-                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_len)?
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_cfg)?
                 else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
@@ -1243,7 +1243,7 @@ impl Loader<LatestAtKey> for Db {
         }
 
         // Issue concurrent reads for each group of keys.
-        let available_range_len = self.limits.available_range_len;
+        let available_range_cfg = self.limits.available_range;
         let futures = keys_by_cursor_and_parent_version
             .into_iter()
             .map(|(group_key, ids)| {
@@ -1251,7 +1251,7 @@ impl Loader<LatestAtKey> for Db {
                     let Some(range) = AvailableRange::result(
                         conn,
                         group_key.checkpoint_viewed_at,
-                        available_range_len,
+                        available_range_cfg,
                     )?
                     else {
                         return Ok::<Vec<(GroupKey, StoredHistoryObject)>, diesel::result::Error>(

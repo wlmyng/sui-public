@@ -471,11 +471,11 @@ impl NameService {
             ..Default::default()
         };
 
-        let available_range_len = db.limits.available_range_len;
+        let available_range_cfg = db.limits.available_range;
         let Some((checkpoint_timestamp_ms, results)) = db
             .execute_repeatable(move |conn| {
                 let Some(range) =
-                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_len)?
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_cfg)?
                 else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
