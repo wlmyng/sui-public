@@ -212,10 +212,10 @@ pub(crate) fn build_objects_query_v2(
     _newer_criteria: impl Fn(RawQuery) -> RawQuery,
 ) -> RawQuery {
     let live_objs_inner = filter_fn(query!(
-        "SELECT (\
+        "SELECT \
     object_id, \
     object_version, \
-    0 AS object_status, \
+    owner_type * 0 AS object_status, \
     object_digest, \
     checkpoint_sequence_number, \
     owner_type, \
@@ -230,8 +230,8 @@ pub(crate) fn build_objects_query_v2(
     df_kind, \
     df_name, \
     df_object_type, \
-    df_object_id\
-    ) FROM objects"
+    df_object_id \
+    FROM objects"
     ));
 
     // Always apply cursor pagination and limit to constrain the number of rows returned, ensure
