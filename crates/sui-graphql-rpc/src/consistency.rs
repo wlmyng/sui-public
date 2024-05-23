@@ -93,7 +93,8 @@ impl Checkpointed for JsonCursor<ConsistentNamedCursor> {
 /// part, due to the invariant that the `objects_history` captures changes that occur after
 /// `objects_snapshot`, but it's a safeguard to handle any possible overlap during snapshot
 /// creation.
-pub(crate) fn build_objects_query_v2_(
+#[allow(dead_code)]
+pub(crate) fn build_objects_query(
     view: View,
     range: AvailableRange,
     page: &Page<Cursor>,
