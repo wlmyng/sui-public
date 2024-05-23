@@ -65,63 +65,70 @@ impl AvailableRange {
         checkpoint_viewed_at: u64,
         cfg: AvailableRangeCfg,
     ) -> QueryResult<Option<Self>> {
-        use checkpoints::dsl as checkpoints;
-        use epochs::dsl as epochs;
-
-        let (first, mut last) = match cfg {
-            AvailableRangeCfg::Checkpoints(checkpoints) => {
-                let rhs: Option<i64> = conn
-                    .result(move || {
-                        let rhs = checkpoints::checkpoints
-                            .select(checkpoints::sequence_number)
-                            .order(checkpoints::sequence_number.desc())
-                            .limit(1);
-                        rhs
-                    })
-                    .optional()?;
-
-                match rhs {
-                    Some(rhs) => ((rhs as u64).saturating_sub(checkpoints), rhs as u64),
-                    None => (0, 0),
-                }
-            }
-            AvailableRangeCfg::Epochs(epochs) => {
-                let epochs = epochs as i64;
-                let checkpoint_range: Vec<i64> = conn.results(move || {
-                    let curr_epoch = epochs::epochs
-                        .select(diesel::dsl::max(epochs::epoch))
-                        .single_value();
-                    let lhs = checkpoints::checkpoints
-                        .select(checkpoints::sequence_number)
-                        .order(checkpoints::sequence_number.asc())
-                        .filter(checkpoints::epoch.nullable().ge(curr_epoch - epochs))
-                        .limit(1);
-
-                    let rhs = checkpoints::checkpoints
-                        .select(checkpoints::sequence_number)
-                        .order(checkpoints::sequence_number.desc())
-                        .limit(1);
-
-                    lhs.union(rhs)
-                })?;
-
-                match checkpoint_range.as_slice() {
-                    [] => (0, 0),
-                    [single_value] => (0, *single_value as u64),
-                    values => {
-                        let min_value = *values.iter().min().unwrap();
-                        let max_value = *values.iter().max().unwrap();
-                        (min_value as u64, max_value as u64)
-                    }
-                }
-            }
-        };
+        let (first, last) = get_checkpoint_bounds(conn, cfg)?;
 
         if checkpoint_viewed_at < first || last < checkpoint_viewed_at {
             return Ok(None);
         }
 
-        last = checkpoint_viewed_at;
-        Ok(Some(Self { first, last }))
+        Ok(Some(Self {
+            first,
+            last: checkpoint_viewed_at,
+        }))
     }
+}
+
+fn get_checkpoint_bounds(conn: &mut Conn, cfg: AvailableRangeCfg) -> QueryResult<(u64, u64)> {
+    use checkpoints::dsl as checkpoints;
+    use epochs::dsl as epochs;
+
+    let (first, last) = match cfg {
+        AvailableRangeCfg::Checkpoints(checkpoints) => {
+            let rhs: Option<i64> = conn
+                .result(move || {
+                    let rhs = checkpoints::checkpoints
+                        .select(checkpoints::sequence_number)
+                        .order(checkpoints::sequence_number.desc())
+                        .limit(1);
+                    rhs
+                })
+                .optional()?;
+
+            match rhs {
+                Some(rhs) => ((rhs as u64).saturating_sub(checkpoints), rhs as u64),
+                None => (0, 0),
+            }
+        }
+        AvailableRangeCfg::Epochs(epochs) => {
+            let epochs = epochs as i64;
+            let checkpoint_range: Vec<i64> = conn.results(move || {
+                let curr_epoch = epochs::epochs
+                    .select(diesel::dsl::max(epochs::epoch))
+                    .single_value();
+                let lhs = checkpoints::checkpoints
+                    .select(checkpoints::sequence_number)
+                    .order(checkpoints::sequence_number.asc())
+                    .filter(checkpoints::epoch.nullable().ge(curr_epoch - epochs))
+                    .limit(1);
+
+                let rhs = checkpoints::checkpoints
+                    .select(checkpoints::sequence_number)
+                    .order(checkpoints::sequence_number.desc())
+                    .limit(1);
+
+                lhs.union(rhs)
+            })?;
+
+            match checkpoint_range.as_slice() {
+                [] => (0, 0),
+                [single_value] => (0, *single_value as u64),
+                values => {
+                    let min_value = *values.iter().min().unwrap();
+                    let max_value = *values.iter().max().unwrap();
+                    (min_value as u64, max_value as u64)
+                }
+            }
+        }
+    };
+    Ok((first, last))
 }
