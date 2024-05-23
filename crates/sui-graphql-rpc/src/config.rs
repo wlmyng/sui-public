@@ -523,6 +523,7 @@ mod tests {
                 max-type-argument-width = 64
                 max-type-nodes = 128
                 max-move-value-depth = 256
+                available-range-len = 900
             "#,
         )
         .unwrap();
@@ -604,6 +605,7 @@ mod tests {
                 max-type-argument-width = 64
                 max-type-nodes = 128
                 max-move-value-depth = 256
+                available-range-len = 900
 
                 [experiments]
                 test-flag = true
