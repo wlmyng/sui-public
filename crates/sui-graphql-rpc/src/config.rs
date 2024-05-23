@@ -126,6 +126,12 @@ pub struct Limits {
     pub max_type_nodes: u32,
     #[serde(default)]
     pub max_move_value_depth: u32,
+    #[serde(default = "default_available_range_len")]
+    pub available_range_len: u64,
+}
+
+const fn default_available_range_len() -> u64 {
+    1200
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Copy)]
@@ -462,6 +468,7 @@ impl Default for Limits {
             max_type_argument_width: MAX_TYPE_ARGUMENT_WIDTH,
             max_type_nodes: MAX_TYPE_NODES,
             max_move_value_depth: MAX_MOVE_VALUE_DEPTH,
+            available_range_len: default_available_range_len(),
         }
     }
 }
@@ -534,6 +541,7 @@ mod tests {
                 max_type_argument_width: 64,
                 max_type_nodes: 128,
                 max_move_value_depth: 256,
+                available_range_len: 900,
             },
             ..Default::default()
         };
@@ -617,6 +625,7 @@ mod tests {
                 max_type_argument_width: 64,
                 max_type_nodes: 128,
                 max_move_value_depth: 256,
+                available_range_len: 900,
             },
             disabled_features: BTreeSet::from([FunctionalGroup::Analytics]),
             experiments: Experiments { test_flag: true },

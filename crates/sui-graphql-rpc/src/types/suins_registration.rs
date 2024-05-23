@@ -24,7 +24,7 @@ use super::{
     type_filter::ExactTypeFilter,
 };
 use crate::{
-    consistency::{build_objects_query, View},
+    consistency::{build_objects_query_v2, View},
     data::{Db, DbConnection, QueryExecutor},
     error::Error,
 };
@@ -471,15 +471,18 @@ impl NameService {
             ..Default::default()
         };
 
+        let available_range_len = db.limits.available_range_len;
         let Some((checkpoint_timestamp_ms, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_len)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
                 let timestamp_ms = Checkpoint::query_timestamp(conn, checkpoint_viewed_at)?;
 
-                let sql = build_objects_query(
+                let sql = build_objects_query_v2(
                     View::Consistent,
                     range,
                     &page,

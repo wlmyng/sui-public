@@ -22,7 +22,7 @@ use super::transaction_block;
 use super::transaction_block::TransactionBlockFilter;
 use super::type_filter::{ExactTypeFilter, TypeFilter};
 use super::{owner::Owner, sui_address::SuiAddress, transaction_block::TransactionBlock};
-use crate::consistency::{build_objects_query, Checkpointed, View};
+use crate::consistency::{build_objects_query_v2, Checkpointed, View};
 use crate::data::package_resolver::PackageResolver;
 use crate::data::{DataLoader, Db, DbConnection, QueryExecutor};
 use crate::error::Error;
@@ -768,10 +768,13 @@ impl Object {
         // paginated queries are consistent with the previous query that created the cursor.
         let cursor_viewed_at = page.validate_cursor_consistency()?;
         let checkpoint_viewed_at = cursor_viewed_at.unwrap_or(checkpoint_viewed_at);
+        let available_range_len = db.limits.available_range_len;
 
         let Some((prev, next, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_len)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
@@ -1240,11 +1243,16 @@ impl Loader<LatestAtKey> for Db {
         }
 
         // Issue concurrent reads for each group of keys.
+        let available_range_len = self.limits.available_range_len;
         let futures = keys_by_cursor_and_parent_version
             .into_iter()
             .map(|(group_key, ids)| {
                 self.execute_repeatable(move |conn| {
-                    let Some(range) = AvailableRange::result(conn, group_key.checkpoint_viewed_at)?
+                    let Some(range) = AvailableRange::result(
+                        conn,
+                        group_key.checkpoint_viewed_at,
+                        available_range_len,
+                    )?
                     else {
                         return Ok::<Vec<(GroupKey, StoredHistoryObject)>, diesel::result::Error>(
                             vec![],
@@ -1268,7 +1276,7 @@ impl Loader<LatestAtKey> for Db {
 
                     Ok(conn
                         .results(move || {
-                            build_objects_query(
+                            build_objects_query_v2(
                                 View::Consistent,
                                 range,
                                 &Page::bounded(ids.len() as u64),
@@ -1384,7 +1392,7 @@ where
         View::Consistent
     };
 
-    build_objects_query(
+    build_objects_query_v2(
         view,
         range,
         page,

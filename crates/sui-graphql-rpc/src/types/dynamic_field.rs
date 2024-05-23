@@ -15,7 +15,7 @@ use super::type_filter::ExactTypeFilter;
 use super::{
     base64::Base64, move_object::MoveObject, move_value::MoveValue, sui_address::SuiAddress,
 };
-use crate::consistency::{build_objects_query, View};
+use crate::consistency::{build_objects_query_v2, View};
 use crate::data::package_resolver::PackageResolver;
 use crate::data::{Db, QueryExecutor};
 use crate::error::Error;
@@ -205,10 +205,13 @@ impl DynamicField {
         // paginated queries are consistent with the previous query that created the cursor.
         let cursor_viewed_at = page.validate_cursor_consistency()?;
         let checkpoint_viewed_at = cursor_viewed_at.unwrap_or(checkpoint_viewed_at);
+        let available_range_len = db.limits.available_range_len;
 
         let Some((prev, next, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_len)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
@@ -330,7 +333,7 @@ fn dynamic_fields_query(
     range: AvailableRange,
     page: &Page<object::Cursor>,
 ) -> RawQuery {
-    build_objects_query(
+    build_objects_query_v2(
         View::Consistent,
         range,
         page,
