@@ -74,6 +74,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "af-indexer"
+version = "1.26.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "backoff",
+ "bcs",
+ "chrono",
+ "clap",
+ "diesel",
+ "diesel-derive-enum",
+ "diesel_migrations",
+ "downcast",
+ "futures",
+ "itertools 0.10.5",
+ "move-core-types",
+ "mysten-metrics",
+ "object_store 0.7.0",
+ "prometheus",
+ "regex",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sui-data-ingestion-core",
+ "sui-json",
+ "sui-json-rpc",
+ "sui-json-rpc-types",
+ "sui-package-resolver",
+ "sui-rest-api",
+ "sui-storage",
+ "sui-types",
+ "tap",
+ "telemetry-subscribers",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util 0.7.10 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml 0.7.4",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "ahash"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

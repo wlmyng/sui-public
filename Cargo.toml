@@ -75,6 +75,7 @@ exclude = [
 members = [
   "consensus/config",
   "consensus/core",
+  "crates/af-indexer",
   "crates/anemo-benchmark",
   "crates/bin-version",
   "crates/mysten-common",
