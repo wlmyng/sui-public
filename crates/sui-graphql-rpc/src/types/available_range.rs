@@ -8,8 +8,7 @@ use crate::error::Error;
 use super::checkpoint::{Checkpoint, CheckpointId};
 use async_graphql::*;
 use diesel::{
-    CombineDsl, ExpressionMethods, NullableExpressionMethods, OptionalExtension, QueryDsl,
-    QueryResult,
+    CombineDsl as _, ExpressionMethods as _, OptionalExtension as _, QueryDsl as _, QueryResult,
 };
 use sui_indexer::schema::checkpoints;
 use sui_indexer::schema::epochs;
@@ -102,22 +101,18 @@ fn get_checkpoint_bounds(conn: &mut Conn, cfg: AvailableRangeCfg) -> QueryResult
         AvailableRangeCfg::Epochs(epochs) => {
             let epochs = epochs as i64;
             let checkpoint_range: Vec<i64> = conn.results(move || {
-                let curr_epoch = epochs::epochs
-                    .select(diesel::dsl::max(epochs::epoch))
-                    .single_value();
-                let lhs = checkpoints::checkpoints
-                    .select(checkpoints::sequence_number)
-                    .order(checkpoints::sequence_number.asc())
-                    .filter(checkpoints::epoch.nullable().ge(curr_epoch - epochs))
-                    .limit(1);
-
+                let lhs = epochs::epochs
+                    .select(epochs::first_checkpoint_id)
+                    .order(epochs::epoch.desc())
+                    .limit(1)
+                    .offset(epochs);
                 let rhs = checkpoints::checkpoints
                     .select(checkpoints::sequence_number)
                     .order(checkpoints::sequence_number.desc())
                     .limit(1);
-
                 lhs.union(rhs)
             })?;
+            tracing::info!(?checkpoint_range);
 
             match checkpoint_range.as_slice() {
                 [] => (0, 0),
