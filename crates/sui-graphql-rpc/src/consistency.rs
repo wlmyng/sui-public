@@ -93,6 +93,7 @@ impl Checkpointed for JsonCursor<ConsistentNamedCursor> {
 /// part, due to the invariant that the `objects_history` captures changes that occur after
 /// `objects_snapshot`, but it's a safeguard to handle any possible overlap during snapshot
 /// creation.
+#[allow(dead_code)]
 pub(crate) fn build_objects_query(
     view: View,
     range: AvailableRange,
@@ -184,6 +185,97 @@ pub(crate) fn build_objects_query(
     let query = query!(
         r#"SELECT DISTINCT ON (object_id) * FROM (({}) UNION ALL ({})) candidates"#,
         snapshot_objs,
+        history_objs
+    )
+    .order_by("object_id")
+    .order_by("object_version DESC");
+
+    query!("SELECT * FROM ({}) candidates", query)
+}
+
+/// Constructs a `RawQuery` against the `objects` and `objects_history` table to fetch
+/// objects that satisfy some filtering criteria `filter_fn` within the provided checkpoint `range`.
+/// The `objects` table contains the latest versions of objects (the live object set), and
+/// `objects_history` captures changes before that, so a query to both tables is necessary to handle
+/// these object states:
+/// 1) In live set, not in history - occurs when an object has not been modified since the oldest
+///    checkpoint in the available range
+/// 2) In history, not in live set - occurs when an object has been modified within the available
+///    range and
+///    - its newest version does not satisfy the filtering criteria
+///    - it has been deleted or wrapped
+/// 3) In live set and in history - occurs when an object has been modified in the availabe range
+pub(crate) fn build_objects_query_v2(
+    view: View,
+    range: AvailableRange,
+    page: &Page<Cursor>,
+    filter_fn: impl Fn(RawQuery) -> RawQuery,
+    _newer_criteria: impl Fn(RawQuery) -> RawQuery,
+) -> RawQuery {
+    let live_objs_inner = filter_fn(query!(
+        "SELECT \
+    object_id, \
+    object_version, \
+    owner_type * 0 AS object_status, \
+    object_digest, \
+    checkpoint_sequence_number, \
+    owner_type, \
+    owner_id, \
+    object_type, \
+    object_type_package, \
+    object_type_module, \
+    object_type_name, \
+    serialized_object, \
+    coin_type, \
+    coin_balance, \
+    df_kind, \
+    df_name, \
+    df_object_type, \
+    df_object_id \
+    FROM objects"
+    ));
+
+    // Always apply cursor pagination and limit to constrain the number of rows returned, ensure
+    // that the inner queries are in step, and to handle the scenario where a user provides more
+    // `objectKeys` than allowed by the maximum page size.
+    let live_objs = page.apply::<StoredHistoryObject>(
+        // The cursor pagination logic refers to the table with the `candidates` alias
+        query!("SELECT candidates.* FROM ({}) candidates", live_objs_inner),
+    );
+
+    let history_objs = {
+        // Similar to the snapshot query, construct the filtered inner query for the history table.
+        let mut history_objs_inner = filter_fn(query!("SELECT * FROM objects_history"));
+        if matches!(view, View::Consistent) {
+            // Additionally bound the inner `objects_history` query by the checkpoint range
+            history_objs_inner = filter!(
+                history_objs_inner,
+                format!(
+                    r#"checkpoint_sequence_number BETWEEN {} AND {}"#,
+                    range.first, range.last
+                )
+            );
+        }
+
+        let history_objs_aliased = {
+            // The cursor pagination logic refers to the table with the `candidates` alias
+            query!(
+                "SELECT candidates.* FROM ({}) candidates",
+                history_objs_inner
+            )
+        };
+        // Always apply cursor pagination and limit to constrain the number of rows returned, ensure
+        // that the inner queries are in step, and to handle the scenario where a user provides more
+        // `objectKeys` than allowed by the maximum page size.
+        page.apply::<StoredHistoryObject>(history_objs_aliased)
+    };
+
+    // Combine the two queries, and select the most recent version of each object. The result set is
+    // the most recent version of objects from `objects` and `objects_history` that match
+    // the filter criteria.
+    let query = query!(
+        r#"SELECT DISTINCT ON (object_id) * FROM (({}) UNION ALL ({})) candidates"#,
+        live_objs,
         history_objs
     )
     .order_by("object_id")

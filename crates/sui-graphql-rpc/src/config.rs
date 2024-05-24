@@ -135,6 +135,21 @@ pub struct Limits {
     pub max_type_nodes: u32,
     #[serde(default)]
     pub max_move_value_depth: u32,
+    #[serde(default)]
+    pub available_range: AvailableRangeCfg,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum AvailableRangeCfg {
+    Checkpoints(u64),
+    Epochs(u32),
+}
+
+impl Default for AvailableRangeCfg {
+    fn default() -> Self {
+        Self::Checkpoints(1200)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Copy)]
@@ -488,6 +503,7 @@ impl Default for Limits {
             max_type_argument_width: MAX_TYPE_ARGUMENT_WIDTH,
             max_type_nodes: MAX_TYPE_NODES,
             max_move_value_depth: MAX_MOVE_VALUE_DEPTH,
+            available_range: Default::default(),
         }
     }
 }
@@ -542,6 +558,7 @@ mod tests {
                 max-type-argument-width = 64
                 max-type-nodes = 128
                 max-move-value-depth = 256
+                available-range = { epochs = 1 }
             "#,
         )
         .unwrap();
@@ -560,6 +577,7 @@ mod tests {
                 max_type_argument_width: 64,
                 max_type_nodes: 128,
                 max_move_value_depth: 256,
+                available_range: AvailableRangeCfg::Epochs(1),
             },
             ..Default::default()
         };
@@ -622,6 +640,7 @@ mod tests {
                 max-type-argument-width = 64
                 max-type-nodes = 128
                 max-move-value-depth = 256
+                available-range = { checkpoints = 900 }
 
                 [experiments]
                 test-flag = true
@@ -643,6 +662,7 @@ mod tests {
                 max_type_argument_width: 64,
                 max_type_nodes: 128,
                 max_move_value_depth: 256,
+                available_range: AvailableRangeCfg::Checkpoints(900),
             },
             disabled_features: BTreeSet::from([FunctionalGroup::Analytics]),
             experiments: Experiments { test_flag: true },

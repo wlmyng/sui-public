@@ -22,7 +22,7 @@ use super::transaction_block;
 use super::transaction_block::TransactionBlockFilter;
 use super::type_filter::{ExactTypeFilter, TypeFilter};
 use super::{owner::Owner, sui_address::SuiAddress, transaction_block::TransactionBlock};
-use crate::consistency::{build_objects_query, Checkpointed, View};
+use crate::consistency::{build_objects_query_v2, Checkpointed, View};
 use crate::data::package_resolver::PackageResolver;
 use crate::data::{DataLoader, Db, DbConnection, QueryExecutor};
 use crate::error::Error;
@@ -53,6 +53,10 @@ pub(crate) struct Object {
     pub kind: ObjectKind,
     /// The checkpoint sequence number at which this was viewed at.
     pub checkpoint_viewed_at: u64,
+    /// Optional root version if this is an indirect child of another object. This enables
+    /// consistent dynamic field reads in cases where:
+    /// TODO(unmaykr)
+    root_object_version: Option<u64>,
 }
 
 /// Type to implement GraphQL fields that are shared by all Objects.
@@ -462,7 +466,7 @@ impl Object {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(self)
-            .dynamic_field(ctx, name, Some(self.version_impl()))
+            .dynamic_field(ctx, name, self.root_version())
             .await
     }
 
@@ -479,7 +483,7 @@ impl Object {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(self)
-            .dynamic_object_field(ctx, name, Some(self.version_impl()))
+            .dynamic_object_field(ctx, name, self.root_version())
             .await
     }
 
@@ -496,7 +500,7 @@ impl Object {
         before: Option<Cursor>,
     ) -> Result<Connection<String, DynamicField>> {
         OwnerImpl::from(self)
-            .dynamic_fields(ctx, first, after, last, before, Some(self.version_impl()))
+            .dynamic_fields(ctx, first, after, last, before, self.root_version())
             .await
     }
 
@@ -676,12 +680,31 @@ impl Object {
         address: SuiAddress,
         native: NativeObject,
         checkpoint_viewed_at: u64,
+        root_version: Option<u64>,
     ) -> Object {
+        let root_object_version = Self::infer_or_forward_root_version(&native, root_version);
         Object {
             address,
             kind: ObjectKind::NotIndexed(native),
             checkpoint_viewed_at,
+            root_object_version,
         }
+    }
+
+    fn infer_or_forward_root_version(
+        native: &NativeObject,
+        root_version: Option<u64>,
+    ) -> Option<u64> {
+        let root_object_version = match native.as_inner().owner {
+            NativeOwner::AddressOwner(_) | NativeOwner::Shared { .. } => {
+                Some(native.as_inner().version().into())
+            }
+            // Unfortunately we can't know the root object's version in this case since we're
+            // immediately loading the child object itself. So the caller has to give the root
+            // version.
+            _ => root_version,
+        };
+        root_object_version
     }
 
     pub(crate) fn native_impl(&self) -> Option<&NativeObject> {
@@ -700,6 +723,10 @@ impl Object {
             K::NotIndexed(native) | K::Indexed(native, _) => native.version().value(),
             K::WrappedOrDeleted(stored) => stored.object_version as u64,
         }
+    }
+
+    pub(crate) fn root_version(&self) -> Option<u64> {
+        self.root_object_version
     }
 
     /// Query the database for a `page` of objects, optionally `filter`-ed.
@@ -741,10 +768,13 @@ impl Object {
         // paginated queries are consistent with the previous query that created the cursor.
         let cursor_viewed_at = page.validate_cursor_consistency()?;
         let checkpoint_viewed_at = cursor_viewed_at.unwrap_or(checkpoint_viewed_at);
+        let available_range_cfg = db.limits.available_range;
 
         let Some((prev, next, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_cfg)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
@@ -766,7 +796,8 @@ impl Object {
             // To maintain consistency, the returned cursor should have the same upper-bound as the
             // checkpoint found on the cursor.
             let cursor = stored.cursor(checkpoint_viewed_at).encode_cursor();
-            let object = Object::try_from_stored_history_object(stored, checkpoint_viewed_at)?;
+            let object =
+                Object::try_from_stored_history_object(stored, checkpoint_viewed_at, None)?;
             conn.edges.push(Edge::new(cursor, downcast(object)?));
         }
 
@@ -857,6 +888,7 @@ impl Object {
     pub(crate) fn try_from_stored_history_object(
         history_object: StoredHistoryObject,
         checkpoint_viewed_at: u64,
+        root_version: Option<u64>,
     ) -> Result<Self, Error> {
         let address = addr(&history_object.object_id)?;
 
@@ -881,10 +913,13 @@ impl Object {
                     Error::Internal(format!("Failed to deserialize object {address}"))
                 })?;
 
+                let root_object_version =
+                    Self::infer_or_forward_root_version(&native_object, root_version);
                 Ok(Self {
                     address,
                     kind: ObjectKind::Indexed(native_object, history_object),
                     checkpoint_viewed_at,
+                    root_object_version,
                 })
             }
             NativeObjectStatus::WrappedOrDeleted => Ok(Self {
@@ -896,6 +931,7 @@ impl Object {
                     checkpoint_sequence_number: history_object.checkpoint_sequence_number,
                 }),
                 checkpoint_viewed_at,
+                root_object_version: None,
             }),
         }
     }
@@ -1167,8 +1203,11 @@ impl Loader<HistoricalKey> for Db {
                 continue;
             }
 
-            let object =
-                Object::try_from_stored_history_object(stored.clone(), key.checkpoint_viewed_at)?;
+            let object = Object::try_from_stored_history_object(
+                stored.clone(),
+                key.checkpoint_viewed_at,
+                None,
+            )?;
             result.insert(*key, object);
         }
 
@@ -1204,11 +1243,16 @@ impl Loader<LatestAtKey> for Db {
         }
 
         // Issue concurrent reads for each group of keys.
+        let available_range_cfg = self.limits.available_range;
         let futures = keys_by_cursor_and_parent_version
             .into_iter()
             .map(|(group_key, ids)| {
                 self.execute_repeatable(move |conn| {
-                    let Some(range) = AvailableRange::result(conn, group_key.checkpoint_viewed_at)?
+                    let Some(range) = AvailableRange::result(
+                        conn,
+                        group_key.checkpoint_viewed_at,
+                        available_range_cfg,
+                    )?
                     else {
                         return Ok::<Vec<(GroupKey, StoredHistoryObject)>, diesel::result::Error>(
                             vec![],
@@ -1232,7 +1276,7 @@ impl Loader<LatestAtKey> for Db {
 
                     Ok(conn
                         .results(move || {
-                            build_objects_query(
+                            build_objects_query_v2(
                                 View::Consistent,
                                 range,
                                 &Page::bounded(ids.len() as u64),
@@ -1255,8 +1299,11 @@ impl Loader<LatestAtKey> for Db {
             for (group_key, stored) in
                 group.map_err(|e| Error::Internal(format!("Failed to fetch objects: {e}")))?
             {
-                let object =
-                    Object::try_from_stored_history_object(stored, group_key.checkpoint_viewed_at)?;
+                let object = Object::try_from_stored_history_object(
+                    stored,
+                    group_key.checkpoint_viewed_at,
+                    group_key.parent_version,
+                )?;
 
                 let key = LatestAtKey {
                     id: object.address,
@@ -1345,7 +1392,7 @@ where
         View::Consistent
     };
 
-    build_objects_query(
+    build_objects_query_v2(
         view,
         range,
         page,

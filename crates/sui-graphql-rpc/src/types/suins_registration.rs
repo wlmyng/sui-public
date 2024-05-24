@@ -24,7 +24,7 @@ use super::{
     type_filter::ExactTypeFilter,
 };
 use crate::{
-    consistency::{build_objects_query, View},
+    consistency::{build_objects_query_v2, View},
     data::{Db, DbConnection, QueryExecutor},
     error::Error,
 };
@@ -289,7 +289,7 @@ impl SuinsRegistration {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(&self.super_.super_)
-            .dynamic_field(ctx, name, Some(self.super_.super_.version_impl()))
+            .dynamic_field(ctx, name, self.super_.super_.root_version())
             .await
     }
 
@@ -306,7 +306,7 @@ impl SuinsRegistration {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(&self.super_.super_)
-            .dynamic_object_field(ctx, name, Some(self.super_.super_.version_impl()))
+            .dynamic_object_field(ctx, name, self.super_.super_.root_version())
             .await
     }
 
@@ -329,7 +329,7 @@ impl SuinsRegistration {
                 after,
                 last,
                 before,
-                Some(self.super_.super_.version_impl()),
+                self.super_.super_.root_version(),
             )
             .await
     }
@@ -471,15 +471,18 @@ impl NameService {
             ..Default::default()
         };
 
+        let available_range_cfg = db.limits.available_range;
         let Some((checkpoint_timestamp_ms, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_cfg)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
                 let timestamp_ms = Checkpoint::query_timestamp(conn, checkpoint_viewed_at)?;
 
-                let sql = build_objects_query(
+                let sql = build_objects_query_v2(
                     View::Consistent,
                     range,
                     &page,
@@ -509,7 +512,8 @@ impl NameService {
         // name_record. We then assign it to the correct field on `domain_expiration` based on the
         // address.
         for result in results {
-            let object = Object::try_from_stored_history_object(result, checkpoint_viewed_at)?;
+            let object =
+                Object::try_from_stored_history_object(result, checkpoint_viewed_at, None)?;
             let move_object = MoveObject::try_from(&object).map_err(|_| {
                 Error::Internal(format!(
                     "Expected {0} to be a NameRecord, but it's not a Move Object.",

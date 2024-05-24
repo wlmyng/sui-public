@@ -6,10 +6,17 @@ license = "Apache-2.0"
 publish = false
 edition = "2021"
 
+[lib]
+doctest = false
 
 [dependencies]
 anyhow.workspace = true
-async-graphql = {workspace = true, features = ["dataloader", "apollo_tracing", "tracing", "opentelemetry"] }
+async-graphql = { workspace = true, features = [
+  "dataloader",
+  "apollo_tracing",
+  "tracing",
+  "opentelemetry",
+] }
 async-graphql-axum.workspace = true
 async-graphql-value.workspace = true
 async-trait.workspace = true
@@ -69,7 +76,7 @@ sui-graphql-rpc-client.workspace = true
 # TODO: put these behind feature flag to prevent leakage
 # Used for dummy data
 bcs.workspace = true
-simulacrum.workspace = true  # todo: cleanup test only deps
+simulacrum.workspace = true                                 # todo: cleanup test only deps
 sui-json-rpc.workspace = true
 sui-json-rpc-types.workspace = true
 sui-indexer = { workspace = true, default-features = true }

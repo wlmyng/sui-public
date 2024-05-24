@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::consistency::{build_objects_query, View};
+use crate::consistency::{build_objects_query_v2, View};
 use crate::data::{Db, QueryExecutor};
 use crate::error::Error;
 use crate::filter;
@@ -244,7 +244,7 @@ impl Coin {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(&self.super_.super_)
-            .dynamic_field(ctx, name, Some(self.super_.super_.version_impl()))
+            .dynamic_field(ctx, name, self.super_.super_.root_version())
             .await
     }
 
@@ -261,7 +261,7 @@ impl Coin {
         name: DynamicFieldName,
     ) -> Result<Option<DynamicField>> {
         OwnerImpl::from(&self.super_.super_)
-            .dynamic_object_field(ctx, name, Some(self.super_.super_.version_impl()))
+            .dynamic_object_field(ctx, name, self.super_.super_.root_version())
             .await
     }
 
@@ -284,7 +284,7 @@ impl Coin {
                 after,
                 last,
                 before,
-                Some(self.super_.super_.version_impl()),
+                self.super_.super_.root_version(),
             )
             .await
     }
@@ -310,10 +310,13 @@ impl Coin {
         // paginated queries are consistent with the previous query that created the cursor.
         let cursor_viewed_at = page.validate_cursor_consistency()?;
         let checkpoint_viewed_at = cursor_viewed_at.unwrap_or(checkpoint_viewed_at);
+        let available_range_cfg = db.limits.available_range;
 
         let Some((prev, next, results)) = db
             .execute_repeatable(move |conn| {
-                let Some(range) = AvailableRange::result(conn, checkpoint_viewed_at)? else {
+                let Some(range) =
+                    AvailableRange::result(conn, checkpoint_viewed_at, available_range_cfg)?
+                else {
                     return Ok::<_, diesel::result::Error>(None);
                 };
 
@@ -336,7 +339,8 @@ impl Coin {
             // To maintain consistency, the returned cursor should have the same upper-bound as the
             // checkpoint found on the cursor.
             let cursor = stored.cursor(checkpoint_viewed_at).encode_cursor();
-            let object = Object::try_from_stored_history_object(stored, checkpoint_viewed_at)?;
+            let object =
+                Object::try_from_stored_history_object(stored, checkpoint_viewed_at, None)?;
 
             let move_ = MoveObject::try_from(&object).map_err(|_| {
                 Error::Internal(format!(
@@ -381,7 +385,7 @@ fn coins_query(
     range: AvailableRange,
     page: &Page<object::Cursor>,
 ) -> RawQuery {
-    build_objects_query(
+    build_objects_query_v2(
         View::Consistent,
         range,
         page,
