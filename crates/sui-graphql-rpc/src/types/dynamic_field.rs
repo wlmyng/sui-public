@@ -30,6 +30,7 @@ pub(crate) struct DynamicField {
     pub super_: MoveObject,
     pub df_object_id: SuiAddress,
     pub df_kind: DynamicFieldType,
+    parent_version: Option<u64>,
 }
 
 #[derive(Union)]
@@ -111,12 +112,13 @@ impl DynamicField {
             let obj = MoveObject::query(
                 ctx,
                 self.df_object_id,
-                Object::under_parent(
-                    // TODO (RPC-131): The dynamic object field value's version should be bounded by
-                    // the field's parent version, not the version of the field object itself.
-                    self.super_.super_.version_impl(),
-                    self.super_.super_.checkpoint_viewed_at,
-                ),
+                // TODO (RPC-131): The dynamic object field value's version should be bounded by
+                // the field's parent version, not the version of the field object itself.
+                if let Some(parent_version) = self.parent_version {
+                    Object::under_parent(parent_version, self.super_.super_.checkpoint_viewed_at)
+                } else {
+                    Object::latest_at(self.super_.super_.checkpoint_viewed_at)
+                },
             )
             .await
             .extend()?;
@@ -185,7 +187,9 @@ impl DynamicField {
         )
         .await?;
 
-        super_.map(Self::try_from).transpose()
+        super_
+            .map(|mo| Self::try_from((mo, parent_version)))
+            .transpose()
     }
 
     /// Due to recent performance degradations, the existing `DynamicField::query` method is now
@@ -285,7 +289,11 @@ impl DynamicField {
             // checkpoint found on the cursor.
             let cursor = stored.cursor(checkpoint_viewed_at).encode_cursor();
 
-            let object = Object::try_from_stored_history_object(stored, checkpoint_viewed_at)?;
+            let object = Object::try_from_stored_history_object(
+                stored,
+                checkpoint_viewed_at,
+                parent_version,
+            )?;
 
             let move_ = MoveObject::try_from(&object).map_err(|_| {
                 Error::Internal(format!(
@@ -294,7 +302,7 @@ impl DynamicField {
                 ))
             })?;
 
-            let dynamic_field = DynamicField::try_from(move_)?;
+            let dynamic_field = DynamicField::try_from((move_, parent_version))?;
             conn.edges.push(Edge::new(cursor, dynamic_field));
         }
 
@@ -302,10 +310,10 @@ impl DynamicField {
     }
 }
 
-impl TryFrom<MoveObject> for DynamicField {
+impl TryFrom<(MoveObject, Option<u64>)> for DynamicField {
     type Error = Error;
 
-    fn try_from(stored: MoveObject) -> Result<Self, Error> {
+    fn try_from((stored, parent_version): (MoveObject, Option<u64>)) -> Result<Self, Error> {
         let super_ = &stored.super_;
 
         let (df_object_id, df_kind) = match &super_.kind {
@@ -341,6 +349,7 @@ impl TryFrom<MoveObject> for DynamicField {
             super_: stored,
             df_object_id,
             df_kind,
+            parent_version,
         })
     }
 }
