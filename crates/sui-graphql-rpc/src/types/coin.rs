@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::consistency::{build_objects_query, View};
+use crate::consistency::{build_objects_query_v2, View};
 use crate::data::{Db, QueryExecutor};
 use crate::error::Error;
 use crate::filter;
@@ -375,7 +375,7 @@ fn coins_query(
     range: AvailableRange,
     page: &Page<object::Cursor>,
 ) -> RawQuery {
-    build_objects_query(
+    build_objects_query_v2(
         View::Consistent,
         range,
         page,

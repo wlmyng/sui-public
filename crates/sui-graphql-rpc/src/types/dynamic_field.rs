@@ -15,7 +15,7 @@ use super::type_filter::ExactTypeFilter;
 use super::{
     base64::Base64, move_object::MoveObject, move_value::MoveValue, sui_address::SuiAddress,
 };
-use crate::consistency::{build_objects_query, View};
+use crate::consistency::{build_objects_query_v2, View};
 use crate::data::package_resolver::PackageResolver;
 use crate::data::{Db, QueryExecutor};
 use crate::error::Error;
@@ -331,7 +331,7 @@ fn dynamic_fields_query(
     range: AvailableRange,
     page: &Page<object::Cursor>,
 ) -> RawQuery {
-    build_objects_query(
+    build_objects_query_v2(
         View::Consistent,
         range,
         page,

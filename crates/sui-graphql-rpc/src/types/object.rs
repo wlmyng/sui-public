@@ -22,7 +22,7 @@ use super::transaction_block;
 use super::transaction_block::TransactionBlockFilter;
 use super::type_filter::{ExactTypeFilter, TypeFilter};
 use super::{owner::Owner, sui_address::SuiAddress, transaction_block::TransactionBlock};
-use crate::consistency::{build_objects_query, Checkpointed, View};
+use crate::consistency::{build_objects_query_v2, Checkpointed, View};
 use crate::data::package_resolver::PackageResolver;
 use crate::data::{DataLoader, Db, DbConnection, QueryExecutor};
 use crate::error::Error;
@@ -1300,7 +1300,7 @@ impl Loader<LatestAtKey> for Db {
 
                     Ok(conn
                         .results(move || {
-                            build_objects_query(
+                            build_objects_query_v2(
                                 View::Consistent,
                                 range,
                                 &Page::bounded(ids.len() as u64),
@@ -1418,7 +1418,7 @@ where
         View::Consistent
     };
 
-    build_objects_query(
+    build_objects_query_v2(
         view,
         range,
         page,

@@ -24,7 +24,7 @@ use super::{
     type_filter::ExactTypeFilter,
 };
 use crate::{
-    consistency::{build_objects_query, View},
+    consistency::{build_objects_query_v2, View},
     data::{Db, DbConnection, QueryExecutor},
     error::Error,
 };
@@ -472,7 +472,7 @@ impl NameService {
 
                 let timestamp_ms = Checkpoint::query_timestamp(conn, checkpoint_viewed_at)?;
 
-                let sql = build_objects_query(
+                let sql = build_objects_query_v2(
                     View::Consistent,
                     range,
                     &page,
