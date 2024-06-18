@@ -209,7 +209,12 @@ Response: {
                 }
               },
               "value": {
-                "json": "df3"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
               }
             }
           }
@@ -326,8 +331,8 @@ Response: {
         "value": {
           "contents": {
             "json": {
-              "id": "0x49cf623123e519b96c66de2c643cd2823f87957fbfcec77c2797acfe5b1925bb",
-              "count": "1"
+              "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+              "count": "2"
             }
           }
         }
@@ -441,7 +446,12 @@ Response: {
                 }
               },
               "value": {
-                "json": "df3"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
               }
             }
           }
@@ -618,17 +628,11 @@ Response: {
                 }
               },
               "value": {
-                "json": "df3"
-              }
-            }
-          },
-          {
-            "cursor": "IGzyQPM2sCXzzf/ffZn4ejUrGDdWWBP9lzjprMgXO6HUAwAAAAAAAAA=",
-            "node": {
-              "name": {
-                "bcs": "A2RmNg==",
-                "type": {
-                  "repr": "0x0000000000000000000000000000000000000000000000000000000000000001::string::String"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
                 }
               },
               "value": {
@@ -820,8 +824,8 @@ Response: {
               "value": {
                 "contents": {
                   "json": {
-                    "id": "0x49cf623123e519b96c66de2c643cd2823f87957fbfcec77c2797acfe5b1925bb",
-                    "count": "1"
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
                   }
                 }
               }
@@ -851,6 +855,7 @@ Response: {
                 }
               },
               "value": {
+<<<<<<< HEAD
                 "json": "df5"
               }
             }
@@ -862,20 +867,13 @@ Response: {
                 "bcs": "A2RmNA==",
                 "type": {
                   "repr": "0x0000000000000000000000000000000000000000000000000000000000000001::string::String"
-                }
-              },
-              "value": {
-                "json": "df4"
-              }
-            }
-          }
-        ]
+=======
+                "contents": {
       }
     },
     "parent_version_6_paginated_no_df_1_2_3": {
       "dynamicFields": {
         "edges": [
-          {
             "cursor": "IGzyQPM2sCXzzf/ffZn4ejUrGDdWWBP9lzjprMgXO6HUBAAAAAAAAAA=",
             "node": {
               "name": {
@@ -972,7 +970,14 @@ Response: {
                   "repr": "u64"
                 }
               },
-              "value": null
+              "value": {
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
+              }
             }
           }
         ]
@@ -1018,6 +1023,7 @@ Response: {
                 }
               },
               "value": {
+<<<<<<< HEAD
                 "json": "df5"
               }
             }
@@ -1033,6 +1039,14 @@ Response: {
               },
               "value": {
                 "json": "df4"
+=======
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
+>>>>>>> a0a9f12676 (test immutable behavior)
               }
             }
           }
