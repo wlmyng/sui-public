@@ -209,7 +209,12 @@ Response: {
                 }
               },
               "value": {
-                "json": "df3"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
               }
             }
           }
@@ -326,8 +331,8 @@ Response: {
         "value": {
           "contents": {
             "json": {
-              "id": "0x49cf623123e519b96c66de2c643cd2823f87957fbfcec77c2797acfe5b1925bb",
-              "count": "1"
+              "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+              "count": "2"
             }
           }
         }
@@ -511,8 +516,8 @@ Response: {
               "value": {
                 "contents": {
                   "json": {
-                    "id": "0x49cf623123e519b96c66de2c643cd2823f87957fbfcec77c2797acfe5b1925bb",
-                    "count": "1"
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
                   }
                 }
               }
@@ -660,7 +665,12 @@ Response: {
                 }
               },
               "value": {
-                "json": "df4"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
               }
             }
           }
@@ -820,8 +830,8 @@ Response: {
               "value": {
                 "contents": {
                   "json": {
-                    "id": "0x49cf623123e519b96c66de2c643cd2823f87957fbfcec77c2797acfe5b1925bb",
-                    "count": "1"
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
                   }
                 }
               }
@@ -899,21 +909,12 @@ Response: {
                 }
               },
               "value": {
-                "json": "df5"
-              }
-            }
-          },
-          {
-            "cursor": "IJPRu9Lu4vWqz99fcFS69YjVb3WSYbSPH/tV2G2YORd6BAAAAAAAAAA=",
-            "node": {
-              "name": {
-                "bcs": "A2RmNA==",
-                "type": {
-                  "repr": "0x0000000000000000000000000000000000000000000000000000000000000001::string::String"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
                 }
-              },
-              "value": {
-                "json": "df4"
               }
             }
           }
@@ -972,7 +973,14 @@ Response: {
                   "repr": "u64"
                 }
               },
-              "value": null
+              "value": {
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
+                }
+              }
             }
           }
         ]
@@ -1066,25 +1074,21 @@ Response: {
                 }
               },
               "value": {
-                "json": "df5"
-              }
-            }
-          },
-          {
-            "cursor": "IJPRu9Lu4vWqz99fcFS69YjVb3WSYbSPH/tV2G2YORd6BAAAAAAAAAA=",
-            "node": {
-              "name": {
-                "bcs": "A2RmNA==",
-                "type": {
-                  "repr": "0x0000000000000000000000000000000000000000000000000000000000000001::string::String"
+                "contents": {
+                  "json": {
+                    "id": "0xd3d565126b52a1248aa22076b60969ec66a0a4ed7a65d02033bd60541e345672",
+                    "count": "2"
+                  }
                 }
-              },
-              "value": {
-                "json": "df4"
               }
             }
           }
         ]
+      }
+    },
+    "parent_version_6_paginated_no_df_1_2_3": {
+      "dynamicFields": {
+        "edges": []
       }
     }
   },
