@@ -224,7 +224,7 @@ impl DynamicField {
 
         let history_object = StoredHistoryObject::from(stored_obj);
         let gql_object =
-            Object::try_from_stored_history_object(history_object, checkpoint_viewed_at)?;
+            Object::try_from_stored_history_object(history_object, checkpoint_viewed_at, None)?;
 
         let super_ = match MoveObject::try_from(&gql_object) {
             Ok(object) => Some(object),
